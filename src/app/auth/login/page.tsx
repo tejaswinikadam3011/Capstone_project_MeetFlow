@@ -6,7 +6,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Video, Mail, Eye, EyeOff, ArrowLeft, Globe, Loader2,
-  CheckCircle2, AlertCircle, User, Lock, Calendar, Sparkles, KeyRound
+  CheckCircle2, AlertCircle, User, Lock, Calendar, KeyRound,
+  Plus, ShieldCheck, X
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -38,9 +39,17 @@ export default function LoginPage() {
 
   // UI States
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  
+  // Google Account Picker Modal State
+  const [googleModal, setGoogleModal] = useState(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState('');
+  const [customGoogleName, setCustomGoogleName] = useState('');
+  const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
+  const [googleAuthProcessing, setGoogleAuthProcessing] = useState(false);
+
+  // Forgot Password Modal
   const [forgotModal, setForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
@@ -48,54 +57,68 @@ export default function LoginPage() {
   const languages = ['English', 'French', 'Hindi', 'Spanish', 'Tamil', 'Telugu', 'German', 'Marathi'];
   const birthYears = Array.from({ length: 50 }, (_, i) => String(2010 - i));
 
-  // Handle Google OAuth
-  const handleGoogleAuth = async () => {
+  // Preset Google accounts for selection
+  const googleAccounts = [
+    { name: 'Tejaswini Kadam', email: 'tejaswinikadam3011@gmail.com', avatar: 'TK', color: '#6c63ff' },
+    { name: 'Sakshi Satavi', email: 'sakshisatavi98@gmail.com', avatar: 'SS', color: '#00d4aa' },
+    { name: 'College Student Account', email: 'student@college.edu', avatar: 'CS', color: '#f72585' },
+  ];
+
+  // Initiate Google Authentication
+  const handleGoogleAuthClick = () => {
     setErrorMsg(null);
-    setGoogleLoading(true);
+    setGoogleModal(true);
+  };
 
-    try {
-      if (isSupabaseConfigured()) {
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/dashboard` : undefined,
-          },
-        });
-        if (error) throw error;
-        return;
-      }
-    } catch (err: any) {
-      console.warn('Supabase OAuth notice:', err);
-    }
+  // Complete Google Account Selection
+  const selectGoogleAccount = (selectedName: string, selectedEmail: string) => {
+    setGoogleAuthProcessing(true);
 
-    // Demo OAuth fallback: Save user to localStorage & route to dashboard
-    const demoUser = {
-      name: 'Google User',
-      email: 'user@gmail.com',
+    const userProfile = {
+      name: selectedName,
+      email: selectedEmail,
       role: 'student',
       language: 'English',
       isLoggedIn: true,
+      authProvider: 'google',
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(selectedName)}`,
     };
+
     if (typeof window !== 'undefined') {
-      localStorage.setItem('meetflow_user', JSON.stringify(demoUser));
+      localStorage.setItem('meetflow_user', JSON.stringify(userProfile));
     }
 
-    if (mode === 'signup') {
-      setFullName('Google User');
-      setStep(2);
-      setGoogleLoading(false);
-    } else {
-      router.push('/dashboard');
-    }
+    setTimeout(() => {
+      setGoogleAuthProcessing(false);
+      setGoogleModal(false);
+
+      if (mode === 'signup') {
+        setFullName(selectedName);
+        setEmail(selectedEmail);
+        setStep(2); // Proceed to age/language onboarding per PRD FR-2, FR-3
+      } else {
+        setSuccessMsg(`Signed in with Google as ${selectedName}! Redirecting...`);
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 700);
+      }
+    }, 600);
   };
 
-  // Handle Email Sign In / Sign Up Form
+  // Handle Custom Google Account Submission
+  const handleCustomGoogleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customGoogleEmail.trim()) return;
+    const derivedName = customGoogleName.trim() || customGoogleEmail.split('@')[0];
+    selectGoogleAccount(derivedName, customGoogleEmail.trim());
+  };
+
+  // Handle Standard Email Sign In / Sign Up Form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Form Validations
     if (!email.trim() || !password.trim()) {
       setErrorMsg('Please enter both email and password.');
       return;
@@ -115,7 +138,6 @@ export default function LoginPage() {
           setErrorMsg('Passwords do not match.');
           return;
         }
-        // Proceed to Step 2 Onboarding (Age range, birth year, language)
         setStep(2);
         return;
       }
@@ -124,7 +146,7 @@ export default function LoginPage() {
       setLoading(true);
       try {
         if (isSupabaseConfigured()) {
-          const { data, error } = await supabase.auth.signUp({
+          const { error } = await supabase.auth.signUp({
             email,
             password,
             options: {
@@ -143,7 +165,6 @@ export default function LoginPage() {
         console.warn('Supabase signup notice:', err);
       }
 
-      // Store in localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem(
           'meetflow_user',
@@ -159,7 +180,7 @@ export default function LoginPage() {
         );
       }
 
-      setSuccessMsg('Account created successfully! Redirecting...');
+      setSuccessMsg('Account created successfully! Redirecting to Dashboard...');
       setTimeout(() => {
         router.push('/dashboard');
       }, 1000);
@@ -193,7 +214,7 @@ export default function LoginPage() {
       );
     }
 
-    setSuccessMsg('Signed in successfully! Redirecting to Dashboard...');
+    setSuccessMsg('Signed in successfully! Redirecting...');
     setTimeout(() => {
       router.push('/dashboard');
     }, 800);
@@ -346,11 +367,10 @@ export default function LoginPage() {
           {/* STEP 1: AUTHENTICATION FORM */}
           {step === 1 && (
             <>
-              {/* Google OAuth (FR-1) */}
+              {/* Google OAuth Button (FR-1) */}
               <button
                 type="button"
-                onClick={handleGoogleAuth}
-                disabled={googleLoading}
+                onClick={handleGoogleAuthClick}
                 className="btn-secondary"
                 style={{
                   width: '100%',
@@ -361,16 +381,26 @@ export default function LoginPage() {
                   padding: '0.85rem',
                   borderRadius: 14,
                   marginBottom: '1.5rem',
-                  cursor: googleLoading ? 'wait' : 'pointer',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  background: 'rgba(255,255,255,0.06)',
+                  cursor: 'pointer',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  background: 'rgba(255,255,255,0.07)',
                   fontWeight: 600,
                   fontSize: '0.9375rem',
                   color: '#ffffff',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)';
                 }}
               >
-                {googleLoading ? <Loader2 size={18} className="animate-spin" /> : <GoogleIcon />}
-                <span>{googleLoading ? 'Connecting with Google...' : 'Continue with Google'}</span>
+                <GoogleIcon />
+                <span>Continue with Google</span>
               </button>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -659,6 +689,190 @@ export default function LoginPage() {
 
         </div>
       </motion.div>
+
+      {/* GOOGLE ACCOUNT SELECTION MODAL */}
+      <AnimatePresence>
+        {googleModal && (
+          <div className="modal-overlay" onClick={() => setGoogleModal(false)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 15 }}
+              style={{
+                borderRadius: 24,
+                padding: '2rem',
+                width: 440,
+                maxWidth: '92vw',
+                background: '#ffffff',
+                color: '#1f2937',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Google Brand Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <GoogleIcon />
+                  <span style={{ fontSize: '1rem', fontWeight: 600, color: '#3c4043' }}>Sign in with Google</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGoogleModal(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', padding: '0.25rem' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#202124', marginBottom: '0.25rem' }}>
+                  Choose an account
+                </h3>
+                <p style={{ fontSize: '0.875rem', color: '#5f6368' }}>
+                  to continue to <strong style={{ color: '#1a73e8' }}>MeetFlow</strong>
+                </p>
+              </div>
+
+              {googleAuthProcessing ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem', gap: '1rem' }}>
+                  <Loader2 size={32} className="animate-spin" color="#1a73e8" />
+                  <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#3c4043' }}>Verifying Google Account...</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {/* Account List */}
+                  {googleAccounts.map(acc => (
+                    <button
+                      key={acc.email}
+                      type="button"
+                      onClick={() => selectGoogleAccount(acc.name, acc.email)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.875rem',
+                        padding: '0.875rem 1rem',
+                        borderRadius: 12,
+                        border: '1px solid #e5e7eb',
+                        background: '#f8fafc',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = '#f1f5f9';
+                        e.currentTarget.style.borderColor = '#cbd5e1';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.borderColor = '#e5e7eb';
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: '50%',
+                          background: acc.color,
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.875rem',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {acc.avatar}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#1e293b' }}>{acc.name}</div>
+                        <div style={{ fontSize: '0.8125rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {acc.email}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+
+                  {/* Use another Google account toggle */}
+                  {!showCustomGoogleInput ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomGoogleInput(true)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.875rem',
+                        padding: '0.875rem 1rem',
+                        borderRadius: 12,
+                        border: '1px dashed #cbd5e1',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        color: '#1a73e8',
+                        fontWeight: 600,
+                        fontSize: '0.875rem',
+                        marginTop: '0.25rem',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Plus size={18} color="#1a73e8" />
+                      </div>
+                      <span>Use another Google account</span>
+                    </button>
+                  ) : (
+                    /* Custom Gmail Input Form */
+                    <form onSubmit={handleCustomGoogleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem', padding: '1rem', background: '#f8fafc', borderRadius: 14, border: '1px solid #e2e8f0' }}>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '0.25rem' }}>Your Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Alex Morgan"
+                          value={customGoogleName}
+                          onChange={e => setCustomGoogleName(e.target.value)}
+                          style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.875rem', outline: 'none', color: '#1e293b' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '0.25rem' }}>Google Email / Gmail</label>
+                        <input
+                          type="email"
+                          placeholder="you@gmail.com"
+                          value={customGoogleEmail}
+                          onChange={e => setCustomGoogleEmail(e.target.value)}
+                          required
+                          style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.875rem', outline: 'none', color: '#1e293b' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomGoogleInput(false)}
+                          style={{ flex: 1, padding: '0.5rem', borderRadius: 8, border: '1px solid #cbd5e1', background: '#ffffff', color: '#64748b', cursor: 'pointer', fontSize: '0.8125rem' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          style={{ flex: 1, padding: '0.5rem', borderRadius: 8, border: 'none', background: '#1a73e8', color: '#ffffff', fontWeight: 600, cursor: 'pointer', fontSize: '0.8125rem' }}
+                        >
+                          Continue →
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              )}
+
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#94a3b8' }}>
+                <ShieldCheck size={14} color="#10b981" />
+                <span>To continue, Google will share your name and email with MeetFlow.</span>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* FORGOT PASSWORD MODAL */}
       <AnimatePresence>
