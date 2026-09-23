@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import GlassNavbar from "@/components/GlassNavbar";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -41,6 +42,9 @@ export default function RootLayout({
           <div className="ambient-orb-bottom" />
           <div className="ambient-orb-center" />
         </div>
+
+        {/* Floating Capsule Glass Navbar (Side Navigation) */}
+        <GlassNavbar />
 
         {/* Foreground App Content */}
         <div className="relative z-10 min-h-screen">

@@ -436,3 +436,20 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 999px;
   transition: width 0.5s ease;
 }
+
+/* App Page Container with Floating Navbar Clearance */
+.app-container {
+  width: 100%;
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 5rem 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .app-container {
+    padding-left: 6.5rem;
+    padding-right: 2rem;
+    padding-top: 2.5rem;
+    padding-bottom: 3rem;
+  }
+}

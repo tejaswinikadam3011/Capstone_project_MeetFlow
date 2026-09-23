@@ -248,7 +248,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Main Content */}
-      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <main className="app-container">
         {/* Welcome */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: '2rem' }}>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>
