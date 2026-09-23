@@ -274,7 +274,7 @@ export default function LoginPage() {
         </div>
 
         {/* Main Glass Form Card */}
-        <div className="glass" style={{ borderRadius: 24, padding: '2.25rem', boxShadow: '0 8px 32px rgba(0,0,0,0.45)' }}>
+        <div className="figma-glass-card" style={{ padding: '2.5rem 2.25rem' }}>
           
           {/* Step Indicator (for signup) */}
           {mode === 'signup' && (
