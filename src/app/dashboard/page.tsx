@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   Video, Plus, Users, Calendar, Brain, MessageSquare,
   Bell, Settings, Archive, CreditCard, Info, ChevronRight,
-  Clock, Mic, MicOff, VideoOff, MoreHorizontal, X, Menu, CheckSquare
+  Clock, Mic, MicOff, VideoOff, MoreHorizontal, X, CheckSquare
 } from 'lucide-react';
 import { format, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isFuture } from 'date-fns';
 
@@ -193,17 +193,14 @@ export default function DashboardPage() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Top Nav */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 30, background: 'rgba(8,11,20,0.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--color-border)', padding: '0 1.5rem', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', display: 'flex', padding: '0.25rem' }}>
-            <Menu size={20} />
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Video size={13} color="white" />
-            </div>
-            <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: '1rem' }}>MeetFlow</span>
+      <header style={{ position: 'sticky', top: 0, zIndex: 30, background: 'rgba(9,3,20,0.85)', backdropFilter: 'blur(24px)', borderBottom: '1px solid var(--color-border)', padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 15px rgba(124, 58, 237, 0.4)' }}>
+            <Video size={16} color="white" />
           </div>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: '1.125rem', letterSpacing: '-0.02em', color: '#ffffff' }}>
+            Meet<span className="gradient-text">Flow</span>
+          </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
