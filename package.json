@@ -1,0 +1,9 @@
+{
+  "name": "meetflow-app",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix meetflow-frontend run dev",
+    "build": "npm --prefix meetflow-frontend run build",
+    "start": "npm --prefix meetflow-frontend run start"
+  }
+}
