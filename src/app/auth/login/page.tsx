@@ -10,6 +10,7 @@ import {
   Plus, ShieldCheck, X
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import NewtonsCradleLoader from '@/components/NewtonsCradleLoader';
 
 // Google SVG Icon
 const GoogleIcon = () => (
@@ -739,9 +740,8 @@ export default function LoginPage() {
               </div>
 
               {googleAuthProcessing ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem', gap: '1rem' }}>
-                  <Loader2 size={34} className="animate-spin" color="#a78bfa" />
-                  <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#ffffff' }}>Connecting with Google...</span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>
+                  <NewtonsCradleLoader size={48} speed={1.2} color="#c4b5fd" label="Connecting with Google..." />
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>

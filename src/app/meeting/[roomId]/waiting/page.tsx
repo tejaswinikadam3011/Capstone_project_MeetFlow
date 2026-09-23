@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Clock, Users, Shield, Mic, MicOff, Video, VideoOff, LogOut } from 'lucide-react';
+import NewtonsCradleLoader from '@/components/NewtonsCradleLoader';
 
 export default function WaitingRoomPage() {
   const params = useParams();
@@ -23,23 +24,10 @@ export default function WaitingRoomPage() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', position: 'relative', overflow: 'hidden' }}>
-      {/* Animated background rings */}
-      {[1, 2, 3].map(i => (
-        <motion.div key={i}
-          style={{ position: 'absolute', borderRadius: '50%', border: `1px solid rgba(108,99,255,${0.08 / i})`, width: i * 250, height: i * 250, pointerEvents: 'none' }}
-          animate={{ scale: [1, 1.05, 1], opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 3, repeat: Infinity, delay: i * 0.5, ease: 'easeInOut' }}
-        />
-      ))}
-
       <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} style={{ width: '100%', maxWidth: 480, textAlign: 'center', position: 'relative', zIndex: 1 }}>
-        {/* Spinner */}
-        <div style={{ width: 96, height: 96, margin: '0 auto 1.5rem', position: 'relative' }}>
-          <motion.div style={{ width: '100%', height: '100%', borderRadius: '50%', border: '3px solid rgba(108,99,255,0.2)', borderTopColor: 'var(--color-accent)', position: 'absolute' }}
-            animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }} />
-          <div style={{ position: 'absolute', inset: 12, borderRadius: '50%', background: 'rgba(108,99,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Users size={32} color="var(--color-accent-light)" />
-          </div>
+        {/* Newton's Cradle Loader */}
+        <div style={{ margin: '0 auto 2rem', display: 'flex', justifyContent: 'center' }}>
+          <NewtonsCradleLoader size={60} speed={1.2} color="#c4b5fd" />
         </div>
 
         <h1 style={{ fontSize: '1.625rem', fontWeight: 700, marginBottom: '0.5rem' }}>

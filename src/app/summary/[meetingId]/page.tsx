@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { ArrowLeft, Brain, Edit3, CheckCircle2, RefreshCw, Download, Eye, EyeOff, History, Save, Users, Globe, AlertCircle } from 'lucide-react';
 import { subDays, format } from 'date-fns';
+import NewtonsCradleLoader from '@/components/NewtonsCradleLoader';
 
 const draftSummary = `This session covered Binary Trees and Binary Search Trees (BST). Prof. Sharma started with a recap of linked lists, then introduced tree terminology (root, node, leaf, depth, height). Key topics covered included pre-order, in-order, post-order traversal algorithms, BST insertion and deletion operations, and an introduction to balanced trees (AVL trees).
 
@@ -141,7 +142,11 @@ export default function SummaryReviewPage() {
                 )}
               </AnimatePresence>
 
-              {editing ? (
+              {regenerating ? (
+                <div style={{ padding: '3.5rem 1rem', display: 'flex', justifyContent: 'center' }}>
+                  <NewtonsCradleLoader size={54} speed={1.2} color="#c4b5fd" label="Gemini 2.5 Flash is analyzing meeting transcript..." />
+                </div>
+              ) : editing ? (
                 <div>
                   <textarea
                     id="summary-editor"
@@ -157,7 +162,7 @@ export default function SummaryReviewPage() {
                   </div>
                 </div>
               ) : (
-                <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)', lineHeight: 1.8 }}>{summary}</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-line' }}>{summary}</p>
               )}
             </div>
           </div>

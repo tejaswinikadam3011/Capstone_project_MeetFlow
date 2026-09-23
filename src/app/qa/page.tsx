@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { ArrowLeft, Brain, Send, Search, ChevronRight, Play, AlertCircle, CheckCircle2, HelpCircle, Users } from 'lucide-react';
 import { subDays, format } from 'date-fns';
+import NewtonsCradleLoader from '@/components/NewtonsCradleLoader';
 
 const myMeetings = [
   { id: '1', title: 'DSA Lecture — Trees', date: subDays(new Date(), 1), roomCode: 'DSA-002' },
@@ -208,14 +209,11 @@ export default function QAPage() {
 
         {/* Loading */}
         {loading && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0' }}>
-            <div style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(108,99,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Brain size={13} color="var(--color-accent-light)" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', background: 'rgba(255,255,255,0.04)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.12)', width: 'fit-content' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Brain size={15} color="#c4b5fd" />
             </div>
-            {[0, 1, 2].map(i => (
-              <motion.div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-accent)' }}
-                animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1, repeat: Infinity, delay: i * 0.3 }} />
-            ))}
+            <NewtonsCradleLoader size={36} speed={1.2} color="#c4b5fd" label="Gemini is searching meeting transcripts..." />
           </div>
         )}
       </div>
