@@ -1,5 +1,0 @@
-{
-  "buildCommand": "cd meetflow-frontend && npm install && npm run build",
-  "outputDirectory": "meetflow-frontend/.next",
-  "framework": "nextjs"
-}

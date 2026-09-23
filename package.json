@@ -1,6 +1,9 @@
 {
-  "name": "meetflow-app",
+  "name": "meetflow-monorepo",
   "private": true,
+  "workspaces": [
+    "meetflow-frontend"
+  ],
   "scripts": {
     "dev": "npm --prefix meetflow-frontend run dev",
     "build": "npm --prefix meetflow-frontend run build",
