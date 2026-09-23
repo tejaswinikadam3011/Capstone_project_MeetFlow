@@ -35,14 +35,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
       <body className="antialiased selection:bg-purple-500/30 selection:text-white">
-        {/* Fine Star Dust Noise Grain */}
-        <div className="stardust-bg" />
+        {/* Ambient Cosmic Purple Glassmorphism Backdrop */}
+        <div className="ambient-bg">
+          <div className="ambient-orb-top" />
+          <div className="ambient-orb-bottom" />
+          <div className="ambient-orb-center" />
+        </div>
 
-        {/* Top & Bottom Glowing Violet Arches (Exact Reference Layout) */}
-        <div className="violet-arch-top" />
-        <div className="violet-arch-bottom" />
-
-        {/* Foreground Page Content */}
+        {/* Foreground App Content */}
         <div className="relative z-10 min-h-screen">
           {children}
         </div>

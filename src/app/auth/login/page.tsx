@@ -274,7 +274,7 @@ export default function LoginPage() {
         </div>
 
         {/* Main Glass Form Card */}
-        <div className="figma-glass-card" style={{ padding: '2.5rem 2.25rem' }}>
+        <div className="glass" style={{ borderRadius: 24, padding: '2.25rem', boxShadow: '0 8px 32px rgba(0,0,0,0.45)' }}>
           
           {/* Step Indicator (for signup) */}
           {mode === 'signup' && (
@@ -699,13 +699,16 @@ export default function LoginPage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 15 }}
               style={{
-                borderRadius: 24,
-                padding: '2rem',
+                borderRadius: 28,
+                padding: '2.25rem',
                 width: 440,
                 maxWidth: '92vw',
-                background: '#ffffff',
-                color: '#1f2937',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+                background: 'linear-gradient(135deg, rgba(25, 10, 48, 0.88) 0%, rgba(15, 5, 30, 0.94) 100%)',
+                backdropFilter: 'blur(32px) saturate(190%)',
+                WebkitBackdropFilter: 'blur(32px) saturate(190%)',
+                border: '1.2px solid rgba(255, 255, 255, 0.22)',
+                color: '#ffffff',
+                boxShadow: '0 25px 70px rgba(76, 29, 149, 0.55), inset 0 1px 1.5px rgba(255, 255, 255, 0.4)',
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -713,33 +716,35 @@ export default function LoginPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <GoogleIcon />
-                  <span style={{ fontSize: '1rem', fontWeight: 600, color: '#3c4043' }}>Sign in with Google</span>
+                  <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+                    {mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
+                  </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setGoogleModal(false)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', padding: '0.25rem' }}
+                  style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', padding: '0.35rem', display: 'flex' }}
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
 
-              <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#202124', marginBottom: '0.25rem' }}>
+              <div style={{ borderBottom: '1px solid rgba(255,255,255,0.12)', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.25rem' }}>
                   Choose an account
                 </h3>
-                <p style={{ fontSize: '0.875rem', color: '#5f6368' }}>
-                  to continue to <strong style={{ color: '#1a73e8' }}>MeetFlow</strong>
+                <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.65)' }}>
+                  to continue to <strong style={{ color: '#c4b5fd' }}>MeetFlow</strong>
                 </p>
               </div>
 
               {googleAuthProcessing ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem', gap: '1rem' }}>
-                  <Loader2 size={32} className="animate-spin" color="#1a73e8" />
-                  <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#3c4043' }}>Verifying Google Account...</span>
+                  <Loader2 size={34} className="animate-spin" color="#a78bfa" />
+                  <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#ffffff' }}>Connecting with Google...</span>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                   {/* Account List */}
                   {googleAccounts.map(acc => (
                     <button
@@ -751,26 +756,28 @@ export default function LoginPage() {
                         alignItems: 'center',
                         gap: '0.875rem',
                         padding: '0.875rem 1rem',
-                        borderRadius: 12,
-                        border: '1px solid #e5e7eb',
-                        background: '#f8fafc',
+                        borderRadius: 16,
+                        border: '1px solid rgba(255, 255, 255, 0.14)',
+                        background: 'rgba(255, 255, 255, 0.05)',
                         cursor: 'pointer',
                         textAlign: 'left',
-                        transition: 'all 0.15s ease',
+                        transition: 'all 0.2s ease',
                       }}
                       onMouseEnter={e => {
-                        e.currentTarget.style.background = '#f1f5f9';
-                        e.currentTarget.style.borderColor = '#cbd5e1';
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                        e.currentTarget.style.borderColor = 'rgba(167, 139, 250, 0.5)';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
                       }}
                       onMouseLeave={e => {
-                        e.currentTarget.style.background = '#f8fafc';
-                        e.currentTarget.style.borderColor = '#e5e7eb';
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.14)';
+                        e.currentTarget.style.transform = 'translateY(0)';
                       }}
                     >
                       <div
                         style={{
-                          width: 38,
-                          height: 38,
+                          width: 40,
+                          height: 40,
                           borderRadius: '50%',
                           background: acc.color,
                           color: '#ffffff',
@@ -779,14 +786,15 @@ export default function LoginPage() {
                           justifyContent: 'center',
                           fontWeight: 700,
                           fontSize: '0.875rem',
+                          boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
                           flexShrink: 0,
                         }}
                       >
                         {acc.avatar}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#1e293b' }}>{acc.name}</div>
-                        <div style={{ fontSize: '0.8125rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#ffffff' }}>{acc.name}</div>
+                        <div style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {acc.email}
                         </div>
                       </div>
@@ -803,59 +811,67 @@ export default function LoginPage() {
                         alignItems: 'center',
                         gap: '0.875rem',
                         padding: '0.875rem 1rem',
-                        borderRadius: 12,
-                        border: '1px dashed #cbd5e1',
+                        borderRadius: 16,
+                        border: '1px dashed rgba(255, 255, 255, 0.25)',
                         background: 'transparent',
                         cursor: 'pointer',
-                        color: '#1a73e8',
+                        color: '#c4b5fd',
                         fontWeight: 600,
                         fontSize: '0.875rem',
                         marginTop: '0.25rem',
-                        transition: 'all 0.15s ease',
+                        transition: 'all 0.2s ease',
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                        e.currentTarget.style.borderColor = '#a78bfa';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                      }}
                     >
-                      <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Plus size={18} color="#1a73e8" />
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(139, 92, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Plus size={18} color="#c4b5fd" />
                       </div>
                       <span>Use another Google account</span>
                     </button>
                   ) : (
                     /* Custom Gmail Input Form */
-                    <form onSubmit={handleCustomGoogleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem', padding: '1rem', background: '#f8fafc', borderRadius: 14, border: '1px solid #e2e8f0' }}>
+                    <form onSubmit={handleCustomGoogleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem', padding: '1.125rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: 16, border: '1px solid rgba(255, 255, 255, 0.15)' }}>
                       <div>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '0.25rem' }}>Your Name</label>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.75)', display: 'block', marginBottom: '0.25rem' }}>Your Name</label>
                         <input
                           type="text"
+                          className="input-glass"
                           placeholder="e.g. Alex Morgan"
                           value={customGoogleName}
                           onChange={e => setCustomGoogleName(e.target.value)}
-                          style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.875rem', outline: 'none', color: '#1e293b' }}
                         />
                       </div>
                       <div>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '0.25rem' }}>Google Email / Gmail</label>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.75)', display: 'block', marginBottom: '0.25rem' }}>Google Email / Gmail</label>
                         <input
                           type="email"
+                          className="input-glass"
                           placeholder="you@gmail.com"
                           value={customGoogleEmail}
                           onChange={e => setCustomGoogleEmail(e.target.value)}
                           required
-                          style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.875rem', outline: 'none', color: '#1e293b' }}
                         />
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                         <button
                           type="button"
                           onClick={() => setShowCustomGoogleInput(false)}
-                          style={{ flex: 1, padding: '0.5rem', borderRadius: 8, border: '1px solid #cbd5e1', background: '#ffffff', color: '#64748b', cursor: 'pointer', fontSize: '0.8125rem' }}
+                          className="btn-secondary"
+                          style={{ flex: 1, padding: '0.55rem', borderRadius: 12, fontSize: '0.8125rem' }}
                         >
                           Cancel
                         </button>
                         <button
                           type="submit"
-                          style={{ flex: 1, padding: '0.5rem', borderRadius: 8, border: 'none', background: '#1a73e8', color: '#ffffff', fontWeight: 600, cursor: 'pointer', fontSize: '0.8125rem' }}
+                          className="btn-primary"
+                          style={{ flex: 1, padding: '0.55rem', borderRadius: 12, fontSize: '0.8125rem' }}
                         >
                           Continue →
                         </button>
@@ -865,9 +881,9 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#94a3b8' }}>
-                <ShieldCheck size={14} color="#10b981" />
-                <span>To continue, Google will share your name and email with MeetFlow.</span>
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                <ShieldCheck size={14} color="#00f2c3" />
+                <span>Google OAuth will link your email & preferences to MeetFlow.</span>
               </div>
             </motion.div>
           </div>
