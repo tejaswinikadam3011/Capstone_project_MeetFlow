@@ -34,7 +34,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
-      <body>{children}</body>
+      <body className="antialiased selection:bg-purple-500/30 selection:text-white">
+        {/* Ambient Cosmic Purple Glassmorphism Backdrop */}
+        <div className="ambient-bg">
+          <div className="ambient-orb-top" />
+          <div className="ambient-orb-bottom" />
+          <div className="ambient-orb-center" />
+        </div>
+
+        {/* Foreground App Content */}
+        <div className="relative z-10 min-h-screen">
+          {children}
+        </div>
+      </body>
     </html>
   );
 }
