@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sparkles, Calendar, MessageSquare, Folder, BarChart3, Settings } from 'lucide-react';
+import { Calendar, MessageSquare, Folder, BarChart3, Settings } from 'lucide-react';
 
 export default function GlassNavbar() {
   const pathname = usePathname();
@@ -14,13 +14,6 @@ export default function GlassNavbar() {
   }
 
   const navItems = [
-    {
-      id: 'ai',
-      label: 'AI Assistant',
-      href: '/qa',
-      icon: Sparkles,
-      active: pathname === '/qa',
-    },
     {
       id: 'calendar',
       label: 'Meetings & Schedule',
