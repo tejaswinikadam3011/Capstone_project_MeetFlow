@@ -4,65 +4,34 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Hand,
-  MessageSquare, MoreHorizontal, PhoneOff, Users, Pin, Shield,
-  Brain, CheckSquare, Settings, Volume2, VolumeX, X, Send,
-  Crown, Radio
+  Mic, MicOff, Video, VideoOff, MonitorOff,
+  MessageSquare, PhoneOff, Users, Brain,
+  X, Send, Crown, Radio, Hand
 } from 'lucide-react';
-
-// ── Demo Participants ──────────────────────────────────────────────────────
-const initialParticipants = [
-  { id: '1', name: 'Prof. Sharma', isHost: true, isCoHost: false, audioOn: true, videoOn: true, handRaised: false, initials: 'PS', color: '#6c63ff' },
-  { id: '2', name: 'You (Host)', isHost: true, isCoHost: false, audioOn: true, videoOn: true, handRaised: false, initials: 'YO', color: '#00d4aa' },
-  { id: '3', name: 'Sakshi M.', isHost: false, isCoHost: false, audioOn: false, videoOn: true, handRaised: true, initials: 'SM', color: '#f72585' },
-  { id: '4', name: 'Rahul D.', isHost: false, isCoHost: false, audioOn: true, videoOn: false, handRaised: false, initials: 'RD', color: '#f59e0b' },
-  { id: '5', name: 'Priya N.', isHost: false, isCoHost: false, audioOn: false, videoOn: false, handRaised: true, initials: 'PN', color: '#3b82f6' },
-  { id: '6', name: 'Arjun S.', isHost: false, isCoHost: false, audioOn: true, videoOn: true, handRaised: false, initials: 'AS', color: '#ec4899' },
-];
-
-const chatMessages = [
-  { id: '1', sender: 'Prof. Sharma', text: 'Welcome everyone! Realtime WebRTC and AI transcription are active.', time: '10:01', isHost: true },
-  { id: '2', sender: 'You', text: 'LiveKit room token generated. Video and audio streaming enabled.', time: '10:02', isHost: true },
-  { id: '3', sender: 'Sakshi M.', text: 'Will this meeting be auto-summarized by Gemini?', time: '10:03', isHost: false },
-  { id: '4', sender: 'Prof. Sharma', text: 'Yes, full transcript and task action items will be reviewed at the end.', time: '10:05', isHost: true },
-];
-
-const reactions = [
-  { emoji: '👍', label: 'Like' }, { emoji: '❤️', label: 'Love' },
-  { emoji: '😂', label: 'Haha' }, { emoji: '👏', label: 'Clap' },
-  { emoji: '🔥', label: 'Fire' }, { emoji: '💡', label: 'Idea' },
-];
+import { useAuth } from '@/lib/useAuth';
 
 export default function LiveMeetingPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth(false);
   const roomId = (params.roomId as string) || 'DEMO-ROOM';
+  const displayName = user?.name || 'You';
 
+  // Media state
   const [audioOn, setAudioOn] = useState(true);
   const [videoOn, setVideoOn] = useState(true);
-  const [screenSharing, setScreenSharing] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
-  const [reactionsOpen, setReactionsOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [lockMute, setLockMute] = useState(false);
   const [chatMsg, setChatMsg] = useState('');
-  const [messages, setMessages] = useState(chatMessages);
-  const [activeReaction, setActiveReaction] = useState<string | null>(null);
+  const [messages, setMessages] = useState<{ id: string; sender: string; text: string; time: string; self: boolean }[]>([]);
   const [elapsed, setElapsed] = useState(0);
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskAssignee, setTaskAssignee] = useState('All');
-  const [taskDue, setTaskDue] = useState('');
   const [showEndConfirm, setShowEndConfirm] = useState(false);
-  const [activeSpeakerId] = useState('2');
+  const [liveKitStatus, setLiveKitStatus] = useState<'connecting' | 'connected' | 'error' | 'no-token'>('connecting');
 
-  // Real WebRTC / LiveKit state
-  const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
-  const [isLiveKitConnected, setIsLiveKitConnected] = useState(false);
+  // Real camera
+  const localVideoRef = useRef<HTMLVideoElement>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const selfVideoRef = useRef<HTMLVideoElement>(null);
 
   // Meeting timer
   useEffect(() => {
@@ -70,206 +39,183 @@ export default function LiveMeetingPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Fetch LiveKit Room Token
+  // Fetch LiveKit token and connect
   useEffect(() => {
     async function initLiveKit() {
       try {
-        const res = await fetch(`/api/livekit/token?room=${encodeURIComponent(roomId)}&username=You&isHost=true`);
+        const res = await fetch(
+          `/api/livekit/token?room=${encodeURIComponent(roomId)}&username=${encodeURIComponent(displayName)}&isHost=true`
+        );
         const data = await res.json();
         if (data.success && data.token) {
-          setLiveKitToken(data.token);
-          setIsLiveKitConnected(true);
+          setLiveKitStatus('connected');
+        } else {
+          setLiveKitStatus('no-token');
         }
-      } catch (err) {
-        console.warn('LiveKit token generation note:', err);
+      } catch {
+        setLiveKitStatus('error');
       }
     }
     initLiveKit();
-  }, [roomId]);
+  }, [roomId, displayName]);
 
-  // Real Camera & Mic Capture
+  // Real camera
   useEffect(() => {
     let stream: MediaStream | null = null;
     async function startMedia() {
-      if (videoOn && typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: audioOn,
-          });
-          setLocalStream(stream);
-          if (selfVideoRef.current) {
-            selfVideoRef.current.srcObject = stream;
-          }
-        } catch (err) {
-          console.warn('Camera/mic access (permission denied or no camera device found):', err);
-        }
-      } else {
-        if (localStream) {
-          localStream.getTracks().forEach(track => track.stop());
-          setLocalStream(null);
-        }
+      if (!videoOn) {
+        localStream?.getTracks().forEach(t => t.stop());
+        setLocalStream(null);
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: audioOn });
+        setLocalStream(stream);
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      } catch {
+        console.warn('Camera/mic access denied or no device found');
       }
     }
     startMedia();
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-      }
-    };
+    return () => { stream?.getTracks().forEach(t => t.stop()); };
   }, [videoOn]);
+
+  // Mute/unmute audio tracks
+  useEffect(() => {
+    localStream?.getAudioTracks().forEach(t => { t.enabled = audioOn; });
+  }, [audioOn, localStream]);
 
   const formatTime = (s: number) =>
     `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   const sendMessage = () => {
     if (!chatMsg.trim()) return;
-    setMessages(m => [
-      ...m,
-      {
-        id: Date.now().toString(),
-        sender: 'You',
-        text: chatMsg,
-        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        isHost: true,
-      },
-    ]);
+    setMessages(m => [...m, {
+      id: Date.now().toString(),
+      sender: displayName,
+      text: chatMsg.trim(),
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      self: true,
+    }]);
     setChatMsg('');
   };
 
-  const triggerReaction = (emoji: string) => {
-    setActiveReaction(emoji);
-    setReactionsOpen(false);
-    setTimeout(() => setActiveReaction(null), 2500);
+  const endMeeting = () => {
+    localStream?.getTracks().forEach(t => t.stop());
+    router.push('/dashboard');
   };
 
   return (
     <div style={{ height: '100vh', background: '#080b14', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
 
       {/* TOP BAR */}
-      <div style={{ height: 52, background: 'rgba(13,17,23,0.95)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 1.25rem', flexShrink: 0 }}>
+      <div style={{ height: 52, background: 'rgba(13,17,23,0.95)', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 1.25rem', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-danger)' }} className="animate-recording" />
-            <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>REC</span>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f72585', animation: 'pulse 1.5s infinite' }} />
+            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>LIVE</span>
           </div>
-          <div style={{ width: 1, height: 16, background: 'var(--color-border)' }} />
-          <span style={{ fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'var(--font-space-grotesk), sans-serif' }}>
-            MeetFlow Room
-          </span>
-          <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>{roomId}</span>
-          
-          {/* LiveKit status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: isLiveKitConnected ? 'rgba(0,212,170,0.1)' : 'rgba(108,99,255,0.1)', padding: '0.2rem 0.6rem', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <Radio size={12} color={isLiveKitConnected ? '#00d4aa' : '#8b85ff'} />
-            <span style={{ fontSize: '0.7rem', color: isLiveKitConnected ? '#00d4aa' : '#8b85ff', fontWeight: 600 }}>
-              {isLiveKitConnected ? 'LiveKit Cloud Active' : 'WebRTC Ready'}
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
+          <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>MeetFlow Room</span>
+          <span style={{ background: 'rgba(108,99,255,0.2)', border: '1px solid rgba(108,99,255,0.4)', borderRadius: 6, padding: '0.1rem 0.5rem', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em' }}>{roomId}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: liveKitStatus === 'connected' ? 'rgba(0,212,170,0.1)' : 'rgba(108,99,255,0.1)', padding: '0.2rem 0.6rem', borderRadius: 999, border: '1px solid rgba(255,255,255,0.1)' }}>
+            <Radio size={11} color={liveKitStatus === 'connected' ? '#00d4aa' : '#8b85ff'} />
+            <span style={{ fontSize: '0.68rem', color: liveKitStatus === 'connected' ? '#00d4aa' : '#8b85ff', fontWeight: 600 }}>
+              {liveKitStatus === 'connected' ? 'LiveKit Connected' : liveKitStatus === 'connecting' ? 'Connecting...' : 'WebRTC Ready'}
             </span>
           </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace' }}>
-            {formatTime(elapsed)}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', background: 'rgba(0,212,170,0.1)', border: '1px solid rgba(0,212,170,0.25)', borderRadius: 20, padding: '0.25rem 0.75rem' }}>
-            <div className="status-dot online" />
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-teal)', fontWeight: 600 }}>Live HD</span>
-          </div>
-        </div>
+        <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.5)', fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace' }}>
+          {formatTime(elapsed)}
+        </span>
       </div>
 
-      {/* MAIN VIDEO GRID AREA */}
+      {/* MAIN AREA */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        <div style={{ flex: 1, padding: '1rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(2, 1fr)', gap: '0.75rem', alignContent: 'center' }}>
-          
-          {initialParticipants.map((p, i) => {
-            const isSelf = p.id === '2';
-            const isActive = p.id === activeSpeakerId;
 
-            return (
-              <motion.div key={p.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }} style={{ height: '100%' }}>
-                <div
-                  className={`video-tile ${isActive ? 'active-speaker' : ''}`}
-                  style={{
-                    position: 'relative',
-                    height: '100%',
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: '#0d1117',
-                    borderRadius: 14,
-                    overflow: 'hidden',
-                    border: isActive ? '2px solid #00d4aa' : '1px solid rgba(255,255,255,0.06)',
-                  }}
-                >
-                  {/* REAL WEBRTC VIDEO FEED FOR SELF */}
-                  {isSelf && videoOn && localStream ? (
-                    <video
-                      ref={selfVideoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        transform: 'scaleX(-1)', // Mirror local camera
-                      }}
-                    />
-                  ) : (
-                    /* AVATAR FALLBACK */
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                      <div style={{ width: 52, height: 52, borderRadius: '50%', background: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem', color: 'white' }}>
-                        {p.initials}
-                      </div>
-                      <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>{isSelf ? 'You (Camera Off)' : p.name}</span>
-                    </div>
-                  )}
+        {/* VIDEO AREA */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', position: 'relative' }}>
 
-                  {/* Tile Name Tag */}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '0.5rem 0.625rem', background: 'linear-gradient(transparent, rgba(0,0,0,0.85))', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                      {p.isHost && <Crown size={11} color="#f59e0b" />}
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'white' }}>{p.name}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      {isSelf ? (!audioOn && <MicOff size={12} color="var(--color-danger)" />) : (!p.audioOn && <MicOff size={12} color="var(--color-danger)" />)}
-                      {p.handRaised && <span style={{ fontSize: '0.75rem' }}>✋</span>}
-                    </div>
-                  </div>
+          {/* Self video tile */}
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+            style={{ position: 'relative', width: '100%', maxWidth: 720, aspectRatio: '16/9', borderRadius: 18, overflow: 'hidden', background: '#111827', border: '2px solid rgba(108,99,255,0.4)', boxShadow: '0 0 40px rgba(108,99,255,0.2)' }}>
+
+            {videoOn && localStream ? (
+              <video ref={localVideoRef} autoPlay playsInline muted
+                style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+            ) : (
+              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', fontWeight: 700 }}>
+                  {displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                 </div>
-              </motion.div>
-            );
-          })}
+                <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>{videoOn ? 'Starting camera...' : 'Camera off'}</span>
+              </div>
+            )}
+
+            {/* Name tag */}
+            <div style={{ position: 'absolute', bottom: 12, left: 14, display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '0.3rem 0.75rem' }}>
+              <Crown size={12} color="#f59e0b" />
+              <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{displayName} (Host)</span>
+            </div>
+
+            {/* Mic indicator */}
+            {!audioOn && (
+              <div style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(239,68,68,0.85)', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <MicOff size={14} color="white" />
+              </div>
+            )}
+
+            {/* Hand raise */}
+            {handRaised && (
+              <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(245,158,11,0.85)', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Hand size={14} color="white" />
+              </div>
+            )}
+          </motion.div>
+
+          {/* Waiting for others hint */}
+          <div style={{ position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'rgba(13,17,23,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '0.6rem 1.25rem', fontSize: '0.8125rem', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>
+            Share room code <strong style={{ color: 'var(--color-accent-light)' }}>{roomId}</strong> for others to join
+          </div>
         </div>
 
         {/* CHAT PANEL */}
         <AnimatePresence>
           {chatOpen && (
-            <motion.div initial={{ x: 320 }} animate={{ x: 0 }} exit={{ x: 320 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              style={{ width: 320, background: 'var(--color-bg-secondary)', borderLeft: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700 }}>Meeting Chat</span>
-                <button onClick={() => setChatOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}><X size={16} /></button>
+            <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 320, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
+              style={{ background: 'rgba(13,17,23,0.95)', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>In-Meeting Chat</span>
+                <button onClick={() => setChatOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)' }}>
+                  <X size={16} />
+                </button>
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                {messages.map(m => (
-                  <div key={m.id}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: m.isHost ? 'var(--color-accent-light)' : 'var(--color-text-primary)' }}>{m.sender}</span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{m.time}</span>
-                    </div>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>{m.text}</div>
+
+              <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {messages.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.8125rem', marginTop: '2rem' }}>
+                    No messages yet. Say hi! 👋
+                  </div>
+                ) : messages.map(m => (
+                  <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: m.self ? 'flex-end' : 'flex-start' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', marginBottom: '0.2rem' }}>{m.sender} · {m.time}</span>
+                    <div style={{
+                      maxWidth: '85%', padding: '0.5rem 0.875rem',
+                      borderRadius: m.self ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                      background: m.self ? 'var(--color-accent)' : 'rgba(255,255,255,0.07)',
+                      fontSize: '0.8125rem', lineHeight: 1.5
+                    }}>{m.text}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ padding: '0.875rem', borderTop: '1px solid var(--color-border)', display: 'flex', gap: '0.5rem' }}>
-                <input id="chat-message-input" className="input-glass" style={{ borderRadius: 10, fontSize: '0.8125rem' }} placeholder="Type a message..." value={chatMsg} onChange={e => setChatMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} />
-                <button onClick={sendMessage} style={{ background: 'var(--color-accent)', border: 'none', borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-                  <Send size={14} color="white" />
+
+              <div style={{ padding: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '0.5rem' }}>
+                <input value={chatMsg} onChange={e => setChatMsg(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                  placeholder="Type a message..."
+                  style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '0.5rem 0.75rem', color: 'white', fontSize: '0.8125rem', outline: 'none' }} />
+                <button onClick={sendMessage} style={{ background: 'var(--color-accent)', border: 'none', borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <Send size={15} color="white" />
                 </button>
               </div>
             </motion.div>
@@ -279,195 +225,108 @@ export default function LiveMeetingPage() {
         {/* PARTICIPANTS PANEL */}
         <AnimatePresence>
           {participantsOpen && (
-            <motion.div initial={{ x: 320 }} animate={{ x: 0 }} exit={{ x: 320 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              style={{ width: 300, background: 'var(--color-bg-secondary)', borderLeft: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700 }}>Participants ({initialParticipants.length})</span>
-                <button onClick={() => setParticipantsOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}><X size={16} /></button>
+            <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 280, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
+              style={{ background: 'rgba(13,17,23,0.95)', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Participants (1)</span>
+                <button onClick={() => setParticipantsOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)' }}>
+                  <X size={16} />
+                </button>
               </div>
-
-              <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
-                {initialParticipants.map(p => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', borderRadius: 10, marginBottom: '0.25rem' }}>
-                    <div style={{ width: 34, height: 34, borderRadius: '50%', background: p.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, color: 'white', flexShrink: 0 }}>{p.initials}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                        {p.name}
-                        {p.isHost && <Crown size={11} color="#f59e0b" />}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.375rem', color: 'var(--color-text-muted)' }}>
-                      {p.audioOn ? <Mic size={13} /> : <MicOff size={13} color="var(--color-danger)" />}
-                      {p.videoOn ? <Video size={13} /> : <VideoOff size={13} color="var(--color-danger)" />}
-                    </div>
+              <div style={{ padding: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem', borderRadius: 10, background: 'rgba(108,99,255,0.1)', border: '1px solid rgba(108,99,255,0.25)' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.875rem', fontWeight: 700 }}>
+                    {displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                   </div>
-                ))}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{displayName}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>Host · You</div>
+                  </div>
+                  <Crown size={14} color="#f59e0b" />
+                </div>
+                <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.8125rem', color: 'rgba(255,255,255,0.3)' }}>
+                  Share the room code to invite others
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* FLOATING REACTION */}
-      <AnimatePresence>
-        {activeReaction && (
-          <motion.div initial={{ opacity: 0, y: 20, scale: 0.5 }} animate={{ opacity: 1, y: 0, scale: 1.5 }} exit={{ opacity: 0, y: -60, scale: 0.5 }}
-            style={{ position: 'absolute', bottom: 120, left: '50%', transform: 'translateX(-50%)', fontSize: '2.5rem', pointerEvents: 'none', zIndex: 99 }}>
-            {activeReaction}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* BOTTOM CONTROL BAR */}
+      <div style={{ height: 72, background: 'rgba(13,17,23,0.97)', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', flexShrink: 0 }}>
 
-      {/* CONTROLS BAR */}
-      <div style={{ height: 72, background: 'rgba(13,17,23,0.97)', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0 1.5rem', flexShrink: 0, position: 'relative' }}>
-
-        {[
-          { id: 'ctrl-audio', icon: audioOn ? Mic : MicOff, label: audioOn ? 'Mute' : 'Unmute', active: audioOn, color: audioOn ? undefined : 'var(--color-danger)', onClick: () => setAudioOn(!audioOn) },
-          { id: 'ctrl-video', icon: videoOn ? Video : VideoOff, label: videoOn ? 'Stop Video' : 'Start Video', active: videoOn, color: videoOn ? undefined : 'var(--color-danger)', onClick: () => setVideoOn(!videoOn) },
-          { id: 'ctrl-screen', icon: screenSharing ? MonitorOff : Monitor, label: screenSharing ? 'Stop Share' : 'Share Screen', active: screenSharing, onClick: () => setScreenSharing(!screenSharing) },
-          { id: 'ctrl-hand', icon: Hand, label: handRaised ? 'Lower Hand' : 'Raise Hand', active: handRaised, color: handRaised ? 'var(--color-warning)' : undefined, onClick: () => setHandRaised(!handRaised) },
-        ].map(ctrl => {
-          const Icon = ctrl.icon;
-          return (
-            <button key={ctrl.id} id={ctrl.id} onClick={ctrl.onClick}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', background: ctrl.active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '0.5rem 0.875rem', cursor: 'pointer', minWidth: 64, transition: 'all 0.2s', color: ctrl.color || 'var(--color-text-secondary)' }}>
-              <Icon size={20} />
-              <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>{ctrl.label}</span>
-            </button>
-          );
-        })}
-
-        {/* Reactions */}
-        <div style={{ position: 'relative' }}>
-          <button id="ctrl-reactions" onClick={() => setReactionsOpen(!reactionsOpen)}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '0.5rem 0.875rem', cursor: 'pointer', minWidth: 64, color: 'var(--color-text-secondary)' }}>
-            <span style={{ fontSize: '1.125rem' }}>😊</span>
-            <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>React</span>
-          </button>
-          <AnimatePresence>
-            {reactionsOpen && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: 14, padding: '0.75rem', display: 'flex', gap: '0.5rem' }}>
-                {reactions.map(r => (
-                  <button key={r.emoji} onClick={() => triggerReaction(r.emoji)}
-                    style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {r.emoji}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <button id="ctrl-chat" onClick={() => { setChatOpen(!chatOpen); setParticipantsOpen(false); }}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', background: chatOpen ? 'rgba(108,99,255,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${chatOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 12, padding: '0.5rem 0.875rem', cursor: 'pointer', minWidth: 64, color: chatOpen ? 'var(--color-accent-light)' : 'var(--color-text-secondary)' }}>
-          <MessageSquare size={20} />
-          <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>Chat</span>
+        {/* Mic */}
+        <button onClick={() => setAudioOn(a => !a)} title={audioOn ? 'Mute' : 'Unmute'}
+          style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', cursor: 'pointer', background: audioOn ? 'rgba(255,255,255,0.1)' : 'rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+          {audioOn ? <Mic size={20} color="white" /> : <MicOff size={20} color="#f87171" />}
         </button>
 
-        <button id="ctrl-participants" onClick={() => { setParticipantsOpen(!participantsOpen); setChatOpen(false); }}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', background: participantsOpen ? 'rgba(108,99,255,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${participantsOpen ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 12, padding: '0.5rem 0.875rem', cursor: 'pointer', minWidth: 64, color: participantsOpen ? 'var(--color-accent-light)' : 'var(--color-text-secondary)', position: 'relative' }}>
-          <Users size={20} />
-          <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>People</span>
+        {/* Camera */}
+        <button onClick={() => setVideoOn(v => !v)} title={videoOn ? 'Stop Video' : 'Start Video'}
+          style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', cursor: 'pointer', background: videoOn ? 'rgba(255,255,255,0.1)' : 'rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+          {videoOn ? <Video size={20} color="white" /> : <VideoOff size={20} color="#f87171" />}
         </button>
 
-        {/* More options */}
-        <div style={{ position: 'relative' }}>
-          <button id="ctrl-more" onClick={() => setMoreOpen(!moreOpen)}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '0.5rem 0.875rem', cursor: 'pointer', minWidth: 64, color: 'var(--color-text-secondary)' }}>
-            <MoreHorizontal size={20} />
-            <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>More</span>
-          </button>
-          <AnimatePresence>
-            {moreOpen && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                className="glass" style={{ position: 'absolute', bottom: '120%', right: 0, width: 200, borderRadius: 14, overflow: 'hidden' }}>
-                {[
-                  { icon: CheckSquare, label: 'Assign Task', onClick: () => { setTaskModalOpen(true); setMoreOpen(false); } },
-                  { icon: lockMute ? Volume2 : VolumeX, label: lockMute ? 'Unlock Mute' : 'Lock Mute All', onClick: () => setLockMute(!lockMute) },
-                  { icon: Shield, label: 'Security', onClick: () => {} },
-                  { icon: Settings, label: 'Meeting Settings', onClick: () => {} },
-                ].map(item => {
-                  const Icon = item.icon;
-                  return (
-                    <button key={item.label} onClick={item.onClick}
-                      style={{ width: '100%', padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--color-text-secondary)', fontSize: '0.875rem', textAlign: 'left' }}>
-                      <Icon size={16} /> {item.label}
-                    </button>
-                  );
-                })}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {/* Hand raise */}
+        <button onClick={() => setHandRaised(h => !h)} title={handRaised ? 'Lower Hand' : 'Raise Hand'}
+          style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', cursor: 'pointer', background: handRaised ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+          <Hand size={20} color={handRaised ? '#fbbf24' : 'white'} />
+        </button>
 
-        {/* End call */}
-        <button id="ctrl-end" onClick={() => setShowEndConfirm(true)}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', background: 'var(--color-danger)', border: 'none', borderRadius: 12, padding: '0.5rem 1.25rem', cursor: 'pointer', color: 'white', marginLeft: '0.5rem' }}>
-          <PhoneOff size={20} />
-          <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>End</span>
+        {/* Participants */}
+        <button onClick={() => { setParticipantsOpen(p => !p); setChatOpen(false); }} title="Participants"
+          style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', cursor: 'pointer', background: participantsOpen ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+          <Users size={20} color="white" />
+        </button>
+
+        {/* Chat */}
+        <button onClick={() => { setChatOpen(c => !c); setParticipantsOpen(false); }} title="Chat"
+          style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', cursor: 'pointer', background: chatOpen ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', position: 'relative' }}>
+          <MessageSquare size={20} color="white" />
+          {messages.length > 0 && !chatOpen && (
+            <div style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: 'var(--color-accent)', border: '1.5px solid #080b14' }} />
+          )}
+        </button>
+
+        {/* AI Summary */}
+        <button title="AI Summary (after meeting)"
+          style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Brain size={20} color="white" />
+        </button>
+
+        {/* Divider */}
+        <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,0.12)', margin: '0 0.5rem' }} />
+
+        {/* End */}
+        <button onClick={() => setShowEndConfirm(true)} title="Leave Meeting"
+          style={{ height: 48, padding: '0 1.25rem', borderRadius: 24, border: 'none', cursor: 'pointer', background: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.875rem', color: 'white' }}>
+          <PhoneOff size={18} />
+          Leave
         </button>
       </div>
 
-      {/* ASSIGN TASK MODAL */}
-      <AnimatePresence>
-        {taskModalOpen && (
-          <div className="modal-overlay" onClick={() => setTaskModalOpen(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-              className="glass" style={{ borderRadius: 20, padding: '2rem', width: 400, maxWidth: '90vw' }} onClick={e => e.stopPropagation()}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h2 style={{ fontWeight: 700, fontSize: '1.125rem' }}>Assign Task with AI</h2>
-                <button onClick={() => setTaskModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}><X size={18} /></button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'block', marginBottom: '0.375rem', color: 'var(--color-text-secondary)' }}>Task Title</label>
-                  <input id="task-title-input" className="input-glass" placeholder="Implement WebRTC Token Auth" value={taskTitle} onChange={e => setTaskTitle(e.target.value)} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'block', marginBottom: '0.375rem', color: 'var(--color-text-secondary)' }}>Assign To</label>
-                  <select id="task-assignee-select" className="input-glass" value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} style={{ cursor: 'pointer' }}>
-                    <option value="All">All Participants</option>
-                    {initialParticipants.filter(p => !p.isHost).map(p => (
-                      <option key={p.id} value={p.name}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'block', marginBottom: '0.375rem', color: 'var(--color-text-secondary)' }}>Due Date</label>
-                  <input id="task-due-input" type="date" className="input-glass" value={taskDue} onChange={e => setTaskDue(e.target.value)} />
-                </div>
-                <button className="btn-primary" style={{ width: '100%', padding: '0.75rem', borderRadius: 12 }} onClick={() => setTaskModalOpen(false)}>
-                  Assign Task
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* END MEETING CONFIRM */}
+      {/* END CONFIRM MODAL */}
       <AnimatePresence>
         {showEndConfirm && (
-          <div className="modal-overlay" onClick={() => setShowEndConfirm(false)}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={() => setShowEndConfirm(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-              className="glass" style={{ borderRadius: 20, padding: '2rem', width: 360, maxWidth: '90vw', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
-                <PhoneOff size={24} color="var(--color-danger)" />
-              </div>
-              <h2 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>End Meeting & Review AI Summary?</h2>
-              <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>
-                Ending the meeting will generate the AI summary for host review.
+              style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 20, padding: '2rem', width: 360, textAlign: 'center' }}
+              onClick={e => e.stopPropagation()}>
+              <PhoneOff size={32} color="#f87171" style={{ margin: '0 auto 1rem' }} />
+              <h2 style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.5rem' }}>Leave Meeting?</h2>
+              <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.5)', marginBottom: '1.5rem' }}>
+                The meeting will continue for others if they are connected.
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <button className="btn-danger" style={{ width: '100%', padding: '0.75rem', borderRadius: 12 }} onClick={() => router.push(`/summary/${roomId}`)}>
-                  End & Open AI Review
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button onClick={() => setShowEndConfirm(false)}
+                  style={{ flex: 1, padding: '0.75rem', borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: 'white', cursor: 'pointer', fontWeight: 600 }}>
+                  Stay
                 </button>
-                <button className="btn-secondary" style={{ width: '100%', padding: '0.75rem', borderRadius: 12 }} onClick={() => router.push('/dashboard')}>
-                  Leave (Keep Meeting Active)
-                </button>
-                <button onClick={() => setShowEndConfirm(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: '0.875rem', padding: '0.5rem' }}>
-                  Cancel
+                <button onClick={endMeeting}
+                  style={{ flex: 1, padding: '0.75rem', borderRadius: 12, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer', fontWeight: 700 }}>
+                  Leave Now
                 </button>
               </div>
             </motion.div>

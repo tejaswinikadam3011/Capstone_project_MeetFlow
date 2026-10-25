@@ -1,34 +1,42 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   Video, Plus, Users, Calendar, Brain, MessageSquare,
   Bell, Settings, Archive, CreditCard, Info, ChevronRight,
-  Clock, Mic, MicOff, VideoOff, MoreHorizontal, X, CheckSquare, LogOut
+  Clock, X, CheckSquare, LogOut, Zap
 } from 'lucide-react';
-import { format, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isFuture } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday } from 'date-fns';
 import { useAuth } from '@/lib/useAuth';
 import { getInitials } from '@/lib/auth';
 import { askMeetingQA } from '@/lib/aiService';
 import NewtonsCradleLoader from '@/components/NewtonsCradleLoader';
 
-// ── Demo Meeting Data ──────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────
+type Meeting = {
+  id: string;
+  room_code: string;
+  title: string;
+  host_name: string;
+  host_id?: string;
+  scheduled_start: string;
+  status: string;
+  created_at: string;
+};
 
-const demoMeetings = [
-  { id: '1', title: 'DSA Lecture — Graphs', roomCode: 'DSA-001', date: addDays(new Date(), 1), time: '10:00 AM', duration: '1h 30m', participants: 45, isHost: true, status: 'upcoming' },
-  { id: '2', title: 'Project Team Sync', roomCode: 'PROJ-22', date: addDays(new Date(), 2), time: '3:00 PM', duration: '45m', participants: 8, isHost: true, status: 'upcoming' },
-  { id: '3', title: 'DBMS Tutorial', roomCode: 'DBMS-07', date: addDays(new Date(), 3), time: '11:30 AM', duration: '1h', participants: 38, isHost: false, status: 'upcoming' },
-  { id: '4', title: 'OS Lab Discussion', roomCode: 'OS-LAB-3', date: addDays(new Date(), 5), time: '2:00 PM', duration: '2h', participants: 22, isHost: false, status: 'upcoming' },
-];
+type Task = {
+  id: string;
+  title: string;
+  assignee_name: string;
+  priority: string;
+  due_date?: string;
+  status: string;
+  meeting_title?: string;
+};
 
-const demoNotifications = [
-  { id: '1', text: 'DSA Lecture starts in 30 minutes', time: '9:30 AM', type: 'reminder' },
-  { id: '2', text: 'Task "Implement BFS" is due today', time: '8:00 AM', type: 'task' },
-  { id: '3', text: 'Prof. Sharma approved summary for OS Lab', time: 'Yesterday', type: 'summary' },
-];
-
+// ── Sidebar ─────────────────────────────────────────────────────────────────
 const Sidebar = ({ open, onClose }: { open: boolean; onClose: () => void }) => (
   <>
     {open && <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40, backdropFilter: 'blur(4px)' }} />}
@@ -50,7 +58,6 @@ const Sidebar = ({ open, onClose }: { open: boolean; onClose: () => void }) => (
               <X size={18} />
             </button>
           </div>
-
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
             {[
               { icon: Archive, label: 'Archive', href: '/archive' },
@@ -69,7 +76,6 @@ const Sidebar = ({ open, onClose }: { open: boolean; onClose: () => void }) => (
               );
             })}
           </nav>
-
           <div style={{ paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
             <Link href="/settings" className="nav-item" onClick={onClose}>
               <Settings size={18} />
@@ -82,13 +88,12 @@ const Sidebar = ({ open, onClose }: { open: boolean; onClose: () => void }) => (
   </>
 );
 
-// Mini Calendar
-const MiniCalendar = ({ meetings }: { meetings: typeof demoMeetings }) => {
+// ── Mini Calendar ────────────────────────────────────────────────────────────
+const MiniCalendar = ({ meetingDates }: { meetingDates: Date[] }) => {
   const [currentDate] = useState(new Date());
   const [selected, setSelected] = useState<Date | null>(null);
   const days = eachDayOfInterval({ start: startOfMonth(currentDate), end: endOfMonth(currentDate) });
   const firstDayOfWeek = startOfMonth(currentDate).getDay();
-  const meetingDates = meetings.map(m => m.date);
 
   return (
     <div className="glass" style={{ borderRadius: 16, padding: '1.25rem' }}>
@@ -122,12 +127,12 @@ const MiniCalendar = ({ meetings }: { meetings: typeof demoMeetings }) => {
   );
 };
 
-// AI Chat Box (FR-6) — Powered by Python FastAPI AI Agent
+// ── AI Chat Box ──────────────────────────────────────────────────────────────
 const AIChatBox = () => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([
-    { role: 'ai', text: 'Hi! Ask me anything about your past meetings (powered by Python AI Agent).' }
+    { role: 'ai', text: 'Hi! Ask me anything about your past meetings.' }
   ]);
 
   const send = async () => {
@@ -136,19 +141,11 @@ const AIChatBox = () => {
     setQuery('');
     setMessages(m => [...m, { role: 'user', text: userQuery }]);
     setLoading(true);
-
     try {
-      const res = await askMeetingQA(userQuery, 'DSA Lecture');
-      const timeTag = res.timestamp ? ` [Jump to ${res.timestamp} →]` : '';
-      setMessages(m => [
-        ...m,
-        { role: 'ai', text: `${res.answer}${timeTag}` }
-      ]);
+      const res = await askMeetingQA(userQuery, '');
+      setMessages(m => [...m, { role: 'ai', text: res.answer }]);
     } catch {
-      setMessages(m => [
-        ...m,
-        { role: 'ai', text: 'Sorry, I encountered an issue retrieving that from the meeting archive.' }
-      ]);
+      setMessages(m => [...m, { role: 'ai', text: 'Sorry, I encountered an issue. Make sure the AI backend is running.' }]);
     } finally {
       setLoading(false);
     }
@@ -156,21 +153,12 @@ const AIChatBox = () => {
 
   return (
     <div className="glass" style={{ borderRadius: 16, padding: '1.25rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(108,99,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Brain size={16} color="var(--color-accent-light)" />
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>AI Assistant</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>FastAPI + LangChain Agent</div>
-          </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '1rem' }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(108,99,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Brain size={16} color="var(--color-accent-light)" />
         </div>
-        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: 6, background: 'rgba(34,197,94,0.12)', color: '#4ade80', fontWeight: 600 }}>
-          Python Online
-        </span>
+        <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>AI Assistant</div>
       </div>
-
       <div style={{ maxHeight: 160, overflowY: 'auto', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {messages.map((m, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -178,31 +166,19 @@ const AIChatBox = () => {
               maxWidth: '85%', padding: '0.5rem 0.875rem', borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
               background: m.role === 'user' ? 'var(--color-accent)' : 'rgba(255,255,255,0.06)',
               fontSize: '0.8125rem', lineHeight: 1.5,
-            }}>
-              {m.text}
-            </div>
+            }}>{m.text}</div>
           </div>
         ))}
         {loading && (
           <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-            <div style={{ padding: '0.5rem 0.875rem', borderRadius: '12px 12px 12px 2px', background: 'rgba(255,255,255,0.06)', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-              Python Agent is thinking...
-            </div>
+            <div style={{ padding: '0.5rem 0.875rem', borderRadius: '12px 12px 12px 2px', background: 'rgba(255,255,255,0.06)', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Thinking...</div>
           </div>
         )}
       </div>
-
       <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <input
-          id="ai-chat-input"
-          className="input-glass"
-          placeholder="Ask e.g. What was discussed about graphs?"
-          value={query}
-          disabled={loading}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && send()}
-          style={{ borderRadius: 10, fontSize: '0.8125rem' }}
-        />
+        <input id="ai-chat-input" className="input-glass" placeholder="Ask about your meetings..." value={query}
+          disabled={loading} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()}
+          style={{ borderRadius: 10, fontSize: '0.8125rem' }} />
         <button onClick={send} disabled={loading} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: 10, whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>
           {loading ? '...' : 'Ask'}
         </button>
@@ -211,12 +187,15 @@ const AIChatBox = () => {
   );
 };
 
+// ── Dashboard ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user, loading, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  // All hooks MUST be called before any early return (Rules of Hooks)
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
@@ -224,7 +203,46 @@ export default function DashboardPage() {
     return 'Good evening';
   }, []);
 
-  // Show loader while checking session
+  const fetchData = useCallback(async () => {
+    setDataLoading(true);
+    try {
+      const [mRes, tRes] = await Promise.all([
+        fetch('/api/meetings'),
+        fetch('/api/tasks'),
+      ]);
+      const mData = await mRes.json();
+      const tData = await tRes.json();
+      setMeetings(mData.data || []);
+      setTasks((tData.data || []).filter((t: Task) => t.status !== 'completed').slice(0, 3));
+    } catch {
+      setMeetings([]);
+      setTasks([]);
+    } finally {
+      setDataLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // On-the-spot instant meeting
+  const startInstantMeeting = async () => {
+    const roomCode = `MF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    await fetch('/api/meetings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room_code: roomCode,
+        title: 'Instant Meeting',
+        host_name: user?.name || 'You',
+        host_id: null,
+        scheduled_start: new Date().toISOString(),
+      }),
+    });
+    window.location.href = `/meeting/${roomCode}`;
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg-primary)' }}>
@@ -235,6 +253,8 @@ export default function DashboardPage() {
 
   const currentUser = user ?? { name: 'Guest', email: 'guest@meetflow.app', role: 'student', language: 'English', isLoggedIn: false };
   const displayInitials = getInitials(currentUser.name);
+  const upcomingMeetings = meetings.filter(m => m.status !== 'ended');
+  const meetingDates = upcomingMeetings.map(m => new Date(m.scheduled_start));
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
@@ -250,44 +270,26 @@ export default function DashboardPage() {
             Meet<span className="gradient-text">Flow</span>
           </span>
         </div>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {/* Notification bell */}
           <div style={{ position: 'relative' }}>
-            <button
-              id="notifications-btn"
-              onClick={() => setNotifOpen(!notifOpen)}
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)', borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}
-            >
+            <button id="notifications-btn" onClick={() => setNotifOpen(!notifOpen)}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)', borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
               <Bell size={16} color="var(--color-text-secondary)" />
-              <div style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--color-accent)', border: '1.5px solid var(--color-bg-primary)' }} />
             </button>
             <AnimatePresence>
               {notifOpen && (
                 <motion.div initial={{ opacity: 0, y: 8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                  style={{ position: 'absolute', right: 0, top: '120%', width: 320, zIndex: 50 }} className="glass" >
-                  <div style={{ borderRadius: 14, overflow: 'hidden' }}>
-                    <div style={{ padding: '1rem 1rem 0.5rem', fontWeight: 700, fontSize: '0.875rem' }}>Notifications</div>
-                    {demoNotifications.map(n => (
-                      <div key={n.id} style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--color-border)', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: n.type === 'reminder' ? 'var(--color-accent)' : n.type === 'task' ? 'var(--color-warning)' : 'var(--color-success)', marginTop: 5 }} />
-                        <div>
-                          <div style={{ fontSize: '0.8125rem' }}>{n.text}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{n.time}</div>
-                        </div>
-                      </div>
-                    ))}
+                  style={{ position: 'absolute', right: 0, top: '120%', width: 300, zIndex: 50 }} className="glass">
+                  <div style={{ borderRadius: 14, padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
+                    No new notifications
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
-
-          {/* Sign Out */}
           <button onClick={signOut} title="Sign out" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)', borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <LogOut size={16} color="var(--color-text-secondary)" />
           </button>
-          {/* Avatar */}
           <Link href="/settings">
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}>
               {displayInitials}
@@ -303,10 +305,12 @@ export default function DashboardPage() {
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>
             {greeting}, <span className="gradient-text">{currentUser.name.split(' ')[0]}</span> 👋
           </h1>
-          <p style={{ color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>You have {demoMeetings.length} upcoming meetings</p>
+          <p style={{ color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>
+            {upcomingMeetings.length > 0 ? `You have ${upcomingMeetings.length} upcoming meeting${upcomingMeetings.length > 1 ? 's' : ''}` : 'No upcoming meetings — create one to get started!'}
+          </p>
         </motion.div>
 
-        {/* Primary Actions — FR-4 */}
+        {/* Primary Actions */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
           <Link href="/meeting/create" style={{ textDecoration: 'none' }}>
             <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
@@ -334,25 +338,23 @@ export default function DashboardPage() {
             </motion.div>
           </Link>
 
-          {/* On-the-Spot Meet — FR-5 */}
-          <Link href="/meeting/DSA-001" style={{ textDecoration: 'none' }}>
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-              style={{ background: 'rgba(247,37,133,0.1)', border: '1px solid rgba(247,37,133,0.25)', borderRadius: 16, padding: '1.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(247,37,133,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Video size={22} color="#f72585" />
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '1rem' }}>On-the-Spot Meet</div>
-                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Start instantly</div>
-              </div>
-            </motion.div>
-          </Link>
+          <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={startInstantMeeting}
+            style={{ background: 'rgba(247,37,133,0.1)', border: '1px solid rgba(247,37,133,0.25)', borderRadius: 16, padding: '1.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(247,37,133,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Zap size={22} color="#f72585" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '1rem' }}>On-the-Spot Meet</div>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Start instantly</div>
+            </div>
+          </motion.div>
         </div>
 
         {/* Grid Layout */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '1.5rem' }}>
-          {/* Left: Upcoming Meetings */}
+          {/* Left: Meetings + Tasks */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Upcoming Meetings */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h2 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Upcoming Meetings</h2>
@@ -360,69 +362,83 @@ export default function DashboardPage() {
                   View archive <ChevronRight size={14} />
                 </Link>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {demoMeetings.map((m, i) => (
-                  <motion.div
-                    key={m.id}
-                    className="glass glass-hover"
-                    style={{ borderRadius: 14, padding: '1.125rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.07 }}
-                  >
-                    <div style={{ width: 46, height: 46, borderRadius: 12, background: m.isHost ? 'rgba(108,99,255,0.15)' : 'rgba(0,212,170,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Video size={20} color={m.isHost ? 'var(--color-accent-light)' : 'var(--color-teal)'} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{m.title}</span>
-                        <span className={`badge ${m.isHost ? 'badge-accent' : 'badge-teal'}`}>{m.isHost ? 'Host' : 'Participant'}</span>
+
+              {dataLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                  <NewtonsCradleLoader size={36} speed={1.2} color="#a78bfa" label="Loading meetings..." />
+                </div>
+              ) : upcomingMeetings.length === 0 ? (
+                <div className="glass" style={{ borderRadius: 14, padding: '2rem', textAlign: 'center' }}>
+                  <Calendar size={32} color="var(--color-text-muted)" style={{ margin: '0 auto 0.75rem' }} />
+                  <div style={{ fontWeight: 600, marginBottom: '0.375rem' }}>No upcoming meetings</div>
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>Create your first meeting to get started</div>
+                  <Link href="/meeting/create" className="btn-primary" style={{ padding: '0.5rem 1.25rem', borderRadius: 10, textDecoration: 'none', fontSize: '0.875rem' }}>
+                    + Host a Meeting
+                  </Link>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {upcomingMeetings.map((m, i) => (
+                    <motion.div key={m.id} className="glass glass-hover"
+                      style={{ borderRadius: 14, padding: '1.125rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem' }}
+                      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
+                      <div style={{ width: 46, height: 46, borderRadius: 12, background: 'rgba(108,99,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Video size={20} color="var(--color-accent-light)" />
                       </div>
-                      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Calendar size={12} /> {format(m.date, 'MMM d')}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Clock size={12} /> {m.time}</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Users size={12} /> {m.participants}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.9375rem', marginBottom: '0.25rem' }}>{m.title}</div>
+                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Clock size={12} /> {format(new Date(m.scheduled_start), 'MMM d, h:mm a')}
+                          </span>
+                          <span style={{ fontFamily: 'monospace', background: 'rgba(108,99,255,0.12)', padding: '0 0.4rem', borderRadius: 4 }}>
+                            {m.room_code}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <Link href={`/meeting/${m.roomCode}`}>
+                      <Link href={`/meeting/${m.room_code}`}>
                         <button className="btn-teal" style={{ padding: '0.4rem 1rem', fontSize: '0.8125rem' }}>Join</button>
                       </Link>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Tasks quick view */}
+            {/* Pending Tasks */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h2 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Pending Tasks</h2>
                 <Link href="/tasks" style={{ fontSize: '0.8125rem', color: 'var(--color-accent-light)', textDecoration: 'none' }}>View all</Link>
               </div>
               <div className="glass" style={{ borderRadius: 14, padding: '1rem' }}>
-                {[{ name: 'Implement BFS Algorithm', due: 'Today', progress: 60, meeting: 'DSA Lecture' },
-                  { name: 'ER Diagram for Library System', due: 'Tomorrow', progress: 30, meeting: 'DBMS Tutorial' },
-                ].map((t, i) => (
-                  <div key={i} style={{ padding: '0.75rem 0', borderBottom: i === 0 ? '1px solid var(--color-border)' : 'none' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{t.name}</span>
-                      <span className={`badge ${t.due === 'Today' ? 'badge-warning' : 'badge-accent'}`}>{t.due}</span>
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>{t.meeting}</div>
-                    <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${t.progress}%` }} />
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>{t.progress}% complete</div>
+                {dataLoading ? (
+                  <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Loading tasks...</div>
+                ) : tasks.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-text-muted)' }}>
+                    <CheckSquare size={28} style={{ margin: '0 auto 0.5rem' }} />
+                    <div style={{ fontSize: '0.875rem' }}>No pending tasks</div>
                   </div>
-                ))}
+                ) : (
+                  tasks.map((t, i) => (
+                    <div key={t.id} style={{ padding: '0.75rem 0', borderBottom: i < tasks.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{t.title}</span>
+                        <span className={`badge ${t.priority === 'High' ? 'badge-warning' : 'badge-accent'}`}>{t.priority}</span>
+                      </div>
+                      {t.meeting_title && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>From: {t.meeting_title}</div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
 
           {/* Right: Calendar + AI Chat */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <MiniCalendar meetings={demoMeetings} />
+            <MiniCalendar meetingDates={meetingDates} />
             <AIChatBox />
           </div>
         </div>
