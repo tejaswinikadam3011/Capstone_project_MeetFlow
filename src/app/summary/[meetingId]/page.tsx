@@ -75,7 +75,9 @@ export default function SummaryReviewPage() {
         setOriginalDraft(summaryText);
         setEditText(summaryText);
       } else {
-        throw new Error(json.error || 'Failed to generate summary');
+        // Surface the hint from the API if available
+        const hint = json.hint ? `\n\n💡 ${json.hint}` : '';
+        throw new Error((json.error || 'Failed to generate summary') + hint);
       }
     } catch (err: any) {
       setError(err.message || 'AI summary generation failed.');

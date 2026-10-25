@@ -4,9 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  Mic, MicOff, Video, VideoOff, MonitorOff,
+  Mic, MicOff, Video, VideoOff,
   MessageSquare, PhoneOff, Users, Brain,
-  X, Send, Crown, Radio, Hand
+  X, Send, Crown, Radio, Hand, NotebookPen
 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 
@@ -22,13 +22,15 @@ export default function LiveMeetingPage() {
   const [videoOn, setVideoOn] = useState(true);
   const [handRaised, setHandRaised] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [chatMsg, setChatMsg] = useState('');
+  const [meetingNotes, setMeetingNotes] = useState('');
   const [messages, setMessages] = useState<{ id: string; sender: string; text: string; time: string; self: boolean }[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [liveKitStatus, setLiveKitStatus] = useState<'connecting' | 'connected' | 'error' | 'no-token'>('connecting');
-  const [chatNotes, setChatNotes] = useState(''); // accumulates typed notes for MoM
+  const [chatNotes, setChatNotes] = useState(''); // accumulates chat for MoM
 
   // Real camera
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -114,10 +116,23 @@ export default function LiveMeetingPage() {
 
   const endMeeting = () => {
     localStream?.getTracks().forEach(t => t.stop());
-    // Build a transcript/notes string from chat + duration for MoM
     const duration = formatTime(elapsed);
-    const transcript = chatNotes.trim() ||
-      `Meeting: ${roomId}\nHost: ${displayName}\nDuration: ${duration}\nParticipants: 1 (host only)\n\nNo chat messages recorded during this session.`;
+    // Combine manual notes + chat messages into rich transcript for MoM
+    const parts: string[] = [];
+    parts.push(`Meeting Room: ${roomId}`);
+    parts.push(`Host: ${displayName}`);
+    parts.push(`Duration: ${duration}`);
+    parts.push(`Date: ${new Date().toLocaleDateString()}`);
+    if (meetingNotes.trim()) {
+      parts.push(`\n--- Meeting Notes (typed by host) ---\n${meetingNotes.trim()}`);
+    }
+    if (chatNotes.trim()) {
+      parts.push(`\n--- In-Meeting Chat ---\n${chatNotes.trim()}`);
+    }
+    if (!meetingNotes.trim() && !chatNotes.trim()) {
+      parts.push('\nNo notes or chat recorded. Brief session.');
+    }
+    const transcript = parts.join('\n');
     const encoded = encodeURIComponent(JSON.stringify({ roomId, title: roomId, duration, transcript }));
     router.push(`/summary/${roomId}?data=${encoded}`);
   };
@@ -281,6 +296,38 @@ export default function LiveMeetingPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* NOTES PANEL */}
+        <AnimatePresence>
+          {notesOpen && (
+            <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 320, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
+              style={{ background: 'rgba(13,17,23,0.95)', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <NotebookPen size={15} color="#a78bfa" />
+                  <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Meeting Notes</span>
+                </div>
+                <button onClick={() => setNotesOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)' }}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ padding: '0.75rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', margin: 0 }}>
+                  Type what was discussed — this feeds the AI MoM generator when you end the meeting.
+                </p>
+                <textarea
+                  value={meetingNotes}
+                  onChange={e => setMeetingNotes(e.target.value)}
+                  placeholder={`e.g.\n- Discussed project timeline\n- Assigned tasks to team members\n- Decided to use React for frontend\n- Next meeting: Friday 3pm`}
+                  style={{ flex: 1, minHeight: 300, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '0.875rem', color: 'white', fontSize: '0.8125rem', lineHeight: 1.6, resize: 'none', outline: 'none', fontFamily: 'inherit' }}
+                />
+                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)', textAlign: 'right' }}>
+                  {meetingNotes.length} chars · auto-saved
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* BOTTOM CONTROL BAR */}
@@ -316,6 +363,15 @@ export default function LiveMeetingPage() {
           <MessageSquare size={20} color="white" />
           {messages.length > 0 && !chatOpen && (
             <div style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: 'var(--color-accent)', border: '1.5px solid #080b14' }} />
+          )}
+        </button>
+
+        {/* Notes */}
+        <button onClick={() => { setNotesOpen(n => !n); setChatOpen(false); setParticipantsOpen(false); }} title="Meeting Notes"
+          style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', cursor: 'pointer', background: notesOpen ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', position: 'relative' }}>
+          <NotebookPen size={20} color={notesOpen ? '#a78bfa' : 'white'} />
+          {meetingNotes.length > 0 && (
+            <div style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: '#a78bfa', border: '1.5px solid #080b14' }} />
           )}
         </button>
 
