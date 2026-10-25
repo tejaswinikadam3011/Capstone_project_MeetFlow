@@ -59,28 +59,36 @@ export default function LiveMeetingPage() {
     initLiveKit();
   }, [roomId, displayName]);
 
-  // Real camera
+  // Start camera/mic on mount; refresh when videoOn changes
   useEffect(() => {
     let stream: MediaStream | null = null;
     async function startMedia() {
+      // Stop previous tracks first
+      localStream?.getTracks().forEach(t => t.stop());
       if (!videoOn) {
-        localStream?.getTracks().forEach(t => t.stop());
         setLocalStream(null);
         return;
       }
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: audioOn });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setLocalStream(stream);
-        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-      } catch {
-        console.warn('Camera/mic access denied or no device found');
+      } catch (err) {
+        console.warn('Camera/mic access denied or no device found:', err);
       }
     }
     startMedia();
     return () => { stream?.getTracks().forEach(t => t.stop()); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoOn]);
 
-  // Mute/unmute audio tracks
+  // Sync stream to video element whenever either changes
+  useEffect(() => {
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream]);
+
+  // Mute/unmute audio tracks live
   useEffect(() => {
     localStream?.getAudioTracks().forEach(t => { t.enabled = audioOn; });
   }, [audioOn, localStream]);
@@ -140,15 +148,28 @@ export default function LiveMeetingPage() {
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
             style={{ position: 'relative', width: '100%', maxWidth: 720, aspectRatio: '16/9', borderRadius: 18, overflow: 'hidden', background: '#111827', border: '2px solid rgba(108,99,255,0.4)', boxShadow: '0 0 40px rgba(108,99,255,0.2)' }}>
 
-            {videoOn && localStream ? (
-              <video ref={localVideoRef} autoPlay playsInline muted
-                style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-            ) : (
-              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+            {/* Always mount video so ref is always available; hide when cam off */}
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: '100%', height: '100%', objectFit: 'cover',
+                transform: 'scaleX(-1)',
+                display: videoOn && localStream ? 'block' : 'none',
+              }}
+            />
+
+            {/* Avatar fallback when camera is off */}
+            {(!videoOn || !localStream) && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
                 <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', fontWeight: 700 }}>
                   {displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                 </div>
-                <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>{videoOn ? 'Starting camera...' : 'Camera off'}</span>
+                <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>
+                  {videoOn ? 'Starting camera…' : 'Camera off'}
+                </span>
               </div>
             )}
 
