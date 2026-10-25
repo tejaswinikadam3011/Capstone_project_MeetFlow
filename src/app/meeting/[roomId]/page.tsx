@@ -28,6 +28,7 @@ export default function LiveMeetingPage() {
   const [elapsed, setElapsed] = useState(0);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [liveKitStatus, setLiveKitStatus] = useState<'connecting' | 'connected' | 'error' | 'no-token'>('connecting');
+  const [chatNotes, setChatNotes] = useState(''); // accumulates typed notes for MoM
 
   // Real camera
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -98,19 +99,27 @@ export default function LiveMeetingPage() {
 
   const sendMessage = () => {
     if (!chatMsg.trim()) return;
-    setMessages(m => [...m, {
+    const newMsg = {
       id: Date.now().toString(),
       sender: displayName,
       text: chatMsg.trim(),
       time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       self: true,
-    }]);
+    };
+    setMessages(m => [...m, newMsg]);
+    // Accumulate chat into notes for MoM
+    setChatNotes(prev => prev + `[${newMsg.time}] ${newMsg.sender}: ${newMsg.text}\n`);
     setChatMsg('');
   };
 
   const endMeeting = () => {
     localStream?.getTracks().forEach(t => t.stop());
-    router.push('/dashboard');
+    // Build a transcript/notes string from chat + duration for MoM
+    const duration = formatTime(elapsed);
+    const transcript = chatNotes.trim() ||
+      `Meeting: ${roomId}\nHost: ${displayName}\nDuration: ${duration}\nParticipants: 1 (host only)\n\nNo chat messages recorded during this session.`;
+    const encoded = encodeURIComponent(JSON.stringify({ roomId, title: roomId, duration, transcript }));
+    router.push(`/summary/${roomId}?data=${encoded}`);
   };
 
   return (
@@ -333,12 +342,12 @@ export default function LiveMeetingPage() {
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             onClick={() => setShowEndConfirm(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-              style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 20, padding: '2rem', width: 360, textAlign: 'center' }}
+              style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 20, padding: '2rem', width: 380, textAlign: 'center' }}
               onClick={e => e.stopPropagation()}>
               <PhoneOff size={32} color="#f87171" style={{ margin: '0 auto 1rem' }} />
-              <h2 style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.5rem' }}>Leave Meeting?</h2>
+              <h2 style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.5rem' }}>End Meeting?</h2>
               <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.5)', marginBottom: '1.5rem' }}>
-                The meeting will continue for others if they are connected.
+                You'll be taken to the <strong style={{ color: 'var(--color-accent-light)' }}>Minutes of Meeting</strong> page to review the AI-generated summary, tasks, and decisions.
               </p>
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button onClick={() => setShowEndConfirm(false)}
@@ -347,7 +356,7 @@ export default function LiveMeetingPage() {
                 </button>
                 <button onClick={endMeeting}
                   style={{ flex: 1, padding: '0.75rem', borderRadius: 12, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer', fontWeight: 700 }}>
-                  Leave Now
+                  End & View MoM →
                 </button>
               </div>
             </motion.div>

@@ -1,209 +1,453 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { ArrowLeft, Brain, Edit3, CheckCircle2, RefreshCw, Download, Eye, EyeOff, History, Save, Users, Globe, AlertCircle } from 'lucide-react';
-import { subDays, format } from 'date-fns';
+import { useParams, useSearchParams } from 'next/navigation';
+import {
+  ArrowLeft, Brain, Edit3, CheckCircle2, RefreshCw, Download,
+  Eye, History, Save, Clock, Users, Sparkles, AlertCircle,
+  CheckSquare, Flag, Calendar, ChevronDown, ChevronUp, Copy
+} from 'lucide-react';
 import NewtonsCradleLoader from '@/components/NewtonsCradleLoader';
+import { format } from 'date-fns';
 
-const draftSummary = `This session covered Binary Trees and Binary Search Trees (BST). Prof. Sharma started with a recap of linked lists, then introduced tree terminology (root, node, leaf, depth, height). Key topics covered included pre-order, in-order, post-order traversal algorithms, BST insertion and deletion operations, and an introduction to balanced trees (AVL trees).
+// ── Types ──────────────────────────────────────────────────────────────────
+type KeyPoint = { topic: string; detail: string; timestamp: string };
+type ActionItem = { task: string; assignee: string; priority: 'High' | 'Medium' | 'Low'; dueDate: string };
+type MoMData = {
+  executiveSummary: string;
+  keyPoints: KeyPoint[];
+  decisions: string[];
+  actionItems: ActionItem[];
+  sentiment: string;
+};
 
-Three practice problems were assigned to students:
-1. Implement a complete BST from scratch in Python
-2. Write all three traversal algorithms
-3. Implement a tree height calculation function
-
-Students raised questions about the time complexity of BST operations and edge cases in deletion. The session ended with a live coding demo of AVL rotations.`;
-
-const originalSummary = `Binary Trees and BST session. Covered: tree terminology, traversal (pre/in/post order), BST insert/delete, AVL trees intro. Three tasks assigned. Q&A on time complexity. Live AVL rotation demo.`;
+const PRIORITY_COLOR: Record<string, string> = {
+  High: '#f87171',
+  Medium: '#fbbf24',
+  Low: '#34d399',
+};
 
 export default function SummaryReviewPage() {
-  const [summary, setSummary] = useState(draftSummary);
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const meetingId = params.meetingId as string;
+
+  // Parse meeting data passed from the meeting room via URL
+  const rawData = searchParams.get('data');
+  const meetingMeta = rawData ? (() => {
+    try { return JSON.parse(decodeURIComponent(rawData)); } catch { return null; }
+  })() : null;
+
+  const meetingTitle = meetingMeta?.title || meetingId;
+  const meetingDuration = meetingMeta?.duration || '—';
+  const meetingTranscript = meetingMeta?.transcript || '';
+
+  // MoM state
+  const [momData, setMomData] = useState<MoMData | null>(null);
+  const [loadingAI, setLoadingAI] = useState(true);
+  const [aiSource, setAiSource] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(draftSummary);
+  const [editText, setEditText] = useState('');
   const [approved, setApproved] = useState(false);
   const [visibility, setVisibility] = useState<'all' | 'absentees'>('all');
   const [showHistory, setShowHistory] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
+  const [originalDraft, setOriginalDraft] = useState('');
+  const [expandedSections, setExpandedSections] = useState({ summary: true, keyPoints: true, decisions: true, tasks: true });
+  const [copied, setCopied] = useState(false);
 
-  const handleApprove = () => setApproved(true);
-
-  const handleSaveEdit = () => {
-    setSummary(editText);
-    setEditing(false);
-  };
-
-  const handleRegenerate = async () => {
-    setRegenerating(true);
+  const generateMoM = useCallback(async (transcript: string) => {
+    setLoadingAI(true);
+    setError(null);
     try {
       const res = await fetch('/api/ai/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'DSA Lecture — Trees',
-          transcript: summary || draftSummary,
-        }),
+        body: JSON.stringify({ transcript, title: meetingTitle, meetingId }),
       });
       const json = await res.json();
-      if (json.success && json.data?.executiveSummary) {
-        const generated = `${json.data.executiveSummary}\n\nKey Highlights:\n${json.data.keyPoints?.map((k: any) => `• [${k.timestamp}] ${k.topic}: ${k.detail}`).join('\n') || ''}\n\nDecisions:\n${json.data.decisions?.map((d: any) => `• ${d}`).join('\n') || ''}`;
-        setSummary(generated);
-        setEditText(generated);
+      if (json.success && json.data) {
+        setMomData(json.data);
+        setAiSource(json.source || 'ai');
+        const summaryText = json.data.executiveSummary || '';
+        setOriginalDraft(summaryText);
+        setEditText(summaryText);
+      } else {
+        throw new Error(json.error || 'Failed to generate summary');
       }
-    } catch (err) {
-      console.error('Regeneration error:', err);
+    } catch (err: any) {
+      setError(err.message || 'AI summary generation failed.');
     } finally {
-      setRegenerating(false);
+      setLoadingAI(false);
     }
+  }, [meetingTitle, meetingId]);
+
+  useEffect(() => {
+    generateMoM(meetingTranscript);
+  }, [generateMoM]);
+
+  // Save tasks to Supabase
+  const saveTasksToSupabase = async () => {
+    if (!momData?.actionItems?.length) return;
+    try {
+      await Promise.all(momData.actionItems.map(item =>
+        fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: item.task,
+            assignee: item.assignee,
+            priority: item.priority,
+            dueDate: item.dueDate,
+            meeting_title: meetingTitle,
+          }),
+        })
+      ));
+    } catch { /* non-blocking */ }
   };
+
+  const handleApprove = async () => {
+    await saveTasksToSupabase();
+    setApproved(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (momData) setMomData({ ...momData, executiveSummary: editText });
+    setEditing(false);
+  };
+
+  const handleCopyMoM = () => {
+    if (!momData) return;
+    const text = `MINUTES OF MEETING — ${meetingTitle}
+Date: ${format(new Date(), 'MMMM d, yyyy')} | Duration: ${meetingDuration}
+Generated by MeetFlow AI
+
+EXECUTIVE SUMMARY
+${momData.executiveSummary}
+
+KEY POINTS
+${momData.keyPoints.map(k => `[${k.timestamp}] ${k.topic}: ${k.detail}`).join('\n')}
+
+DECISIONS
+${momData.decisions.map(d => `• ${d}`).join('\n')}
+
+ACTION ITEMS
+${momData.actionItems.map(a => `• ${a.task} — ${a.assignee} (${a.priority}) | Due: ${a.dueDate}`).join('\n')}
+
+Sentiment: ${momData.sentiment}`;
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const toggle = (key: keyof typeof expandedSections) =>
+    setExpandedSections(s => ({ ...s, [key]: !s[key] }));
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg-primary)', padding: '2rem 1rem' }}>
-      <div style={{ maxWidth: 860, margin: '0 auto' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto' }}>
+
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-          <Link href="/archive" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)', textDecoration: 'none', color: 'var(--color-text-secondary)' }}>
+        <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
+          style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', marginBottom: '2rem' }}>
+          <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)', textDecoration: 'none', color: 'var(--color-text-secondary)', flexShrink: 0, marginTop: 2 }}>
             <ArrowLeft size={18} />
           </Link>
           <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: '1.375rem', fontWeight: 700 }}>Review AI Summary</h1>
-            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>DSA Lecture — Trees · {format(subDays(new Date(), 1), 'MMMM d, yyyy')}</p>
-          </div>
-          {!approved && (
-            <span className="badge badge-warning" style={{ padding: '0.375rem 0.875rem', fontSize: '0.8125rem' }}>⏳ Pending Review</span>
-          )}
-          {approved && (
-            <span className="badge badge-success" style={{ padding: '0.375rem 0.875rem', fontSize: '0.8125rem' }}>✅ Approved</span>
-          )}
-        </div>
-
-        {/* Approved banner */}
-        <AnimatePresence>
-          {approved && (
-            <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <CheckCircle2 size={20} color="var(--color-success)" />
-              <div>
-                <div style={{ fontWeight: 700, color: 'var(--color-success)' }}>Summary Approved & Published</div>
-                <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Visible to: {visibility === 'all' ? 'All participants' : 'Absentees only'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.25rem' }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Brain size={14} color="white" />
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <h1 style={{ fontSize: '1.375rem', fontWeight: 700 }}>Minutes of Meeting</h1>
+              {approved ? (
+                <span style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80', borderRadius: 20, padding: '0.15rem 0.7rem', fontSize: '0.75rem', fontWeight: 700 }}>✅ Approved</span>
+              ) : !loadingAI && (
+                <span style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24', borderRadius: 20, padding: '0.15rem 0.7rem', fontSize: '0.75rem', fontWeight: 700 }}>⏳ Pending Review</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Calendar size={12} /> {format(new Date(), 'MMMM d, yyyy')}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Clock size={12} /> {meetingDuration}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Users size={12} /> Room: {meetingId}</span>
+              {aiSource && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Sparkles size={12} /> {aiSource === 'fallback' ? 'Demo AI' : 'Gemini 2.5 Flash'}</span>
+              )}
+            </div>
+          </div>
+        </motion.div>
 
-        {/* AI notice */}
-        {!approved && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 12, padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
-            <AlertCircle size={18} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: 1 }} />
-            <div>
-              <div style={{ fontWeight: 700, color: 'var(--color-warning)', fontSize: '0.9rem' }}>Review before publishing</div>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>This AI-generated summary is only visible to you. Edit, regenerate, or approve it before students can see it. (NFR-2)</div>
+        {/* AI Generating Loader */}
+        {loadingAI && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '5rem 2rem', gap: '1.5rem' }}>
+            <NewtonsCradleLoader size={54} speed={1.2} color="#a78bfa" label="" />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: '0.375rem' }}>Generating Minutes of Meeting…</div>
+              <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Gemini AI is analyzing the meeting and extracting key insights, decisions & action items</div>
             </div>
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: '1.5rem', alignItems: 'start' }}>
-          {/* Main summary editor */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div className="glass" style={{ borderRadius: 16, padding: '1.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(108,99,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Brain size={16} color="var(--color-accent-light)" />
-                  </div>
-                  <span style={{ fontWeight: 700 }}>AI Generated Summary</span>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button onClick={() => setShowHistory(!showHistory)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', background: showHistory ? 'rgba(108,99,255,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showHistory ? 'var(--color-accent)' : 'var(--color-border)'}`, borderRadius: 8, padding: '0.4rem 0.75rem', cursor: 'pointer', color: showHistory ? 'var(--color-accent-light)' : 'var(--color-text-muted)', fontSize: '0.8125rem', transition: 'all 0.2s' }}>
-                    <History size={13} /> History
-                  </button>
-                  {!editing && !approved && (
-                    <button onClick={() => { setEditing(true); setEditText(summary); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.4rem 0.75rem', cursor: 'pointer', color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
-                      <Edit3 size={13} /> Edit
-                    </button>
-                  )}
-                </div>
-              </div>
+        {/* Error state */}
+        {!loadingAI && error && (
+          <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 14, padding: '1.5rem', textAlign: 'center', marginBottom: '1.5rem' }}>
+            <AlertCircle size={28} color="#f87171" style={{ margin: '0 auto 0.75rem' }} />
+            <div style={{ fontWeight: 700, color: '#f87171', marginBottom: '0.375rem' }}>AI Generation Failed</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>{error}</div>
+            <button onClick={() => generateMoM(meetingTranscript)} className="btn-primary" style={{ padding: '0.6rem 1.25rem', borderRadius: 10 }}>
+              Try Again
+            </button>
+          </div>
+        )}
 
-              {/* Version history — FR-42 */}
+        {/* MoM Content */}
+        {!loadingAI && momData && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: '1.5rem', alignItems: 'start' }}>
+
+            {/* LEFT: Main sections */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+              {/* Human-in-the-loop notice */}
+              {!approved && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.22)', borderRadius: 12, padding: '0.875rem 1.125rem' }}>
+                  <AlertCircle size={17} color="#fbbf24" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', lineHeight: 1.55 }}>
+                    <strong style={{ color: '#fbbf24' }}>Review before publishing.</strong> This AI-generated MoM is only visible to you. Edit or regenerate it, then <strong>Approve & Publish</strong> to share with participants.
+                  </div>
+                </div>
+              )}
+
+              {/* Approved banner */}
               <AnimatePresence>
-                {showHistory && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                    style={{ marginBottom: '1.25rem', overflow: 'hidden' }}>
-                    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: '1rem', border: '1px solid var(--color-border)' }}>
-                      <div style={{ fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--color-text-muted)' }}>📜 Original AI Draft</div>
-                      <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, fontStyle: 'italic' }}>{originalSummary}</p>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.75rem' }}>Generated automatically · 2 edits made by host</div>
+                {approved && (
+                  <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <CheckCircle2 size={20} color="#4ade80" />
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#4ade80', fontSize: '0.9375rem' }}>MoM Approved & Published</div>
+                      <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                        Visible to: {visibility === 'all' ? 'All participants' : 'Absentees only'} · Action items saved to Tasks
+                      </div>
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {regenerating ? (
-                <div style={{ padding: '3.5rem 1rem', display: 'flex', justifyContent: 'center' }}>
-                  <NewtonsCradleLoader size={54} speed={1.2} color="#c4b5fd" label="Gemini 2.5 Flash is analyzing meeting transcript..." />
-                </div>
-              ) : editing ? (
-                <div>
-                  <textarea
-                    id="summary-editor"
-                    value={editText}
-                    onChange={e => setEditText(e.target.value)}
-                    style={{ width: '100%', minHeight: 280, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-accent)', borderRadius: 12, padding: '1rem', color: 'var(--color-text-primary)', fontSize: '0.9rem', lineHeight: 1.7, resize: 'vertical', outline: 'none', fontFamily: 'inherit' }}
-                  />
-                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
-                    <button onClick={() => setEditing(false)} className="btn-secondary" style={{ padding: '0.6rem 1.25rem', borderRadius: 10 }}>Cancel</button>
-                    <button onClick={handleSaveEdit} className="btn-primary" style={{ padding: '0.6rem 1.25rem', borderRadius: 10, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                      <Save size={14} /> Save Edits
-                    </button>
+              {/* Executive Summary */}
+              <div className="glass" style={{ borderRadius: 16, overflow: 'hidden' }}>
+                <button onClick={() => toggle('summary')} style={{ width: '100%', padding: '1.125rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', fontWeight: 700, fontSize: '0.9375rem' }}>
+                    <Brain size={16} color="var(--color-accent-light)" /> Executive Summary
                   </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {!editing && !approved && (
+                      <span onClick={e => { e.stopPropagation(); setEditing(true); setEditText(momData.executiveSummary); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)', borderRadius: 7, padding: '0.25rem 0.6rem', cursor: 'pointer' }}>
+                        <Edit3 size={11} /> Edit
+                      </span>
+                    )}
+                    {expandedSections.summary ? <ChevronUp size={16} color="var(--color-text-muted)" /> : <ChevronDown size={16} color="var(--color-text-muted)" />}
+                  </div>
+                </button>
+                <AnimatePresence>
+                  {expandedSections.summary && (
+                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
+                      <div style={{ padding: '0 1.5rem 1.5rem' }}>
+                        {editing ? (
+                          <div>
+                            <textarea id="summary-editor" value={editText} onChange={e => setEditText(e.target.value)}
+                              style={{ width: '100%', minHeight: 200, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-accent)', borderRadius: 12, padding: '1rem', color: 'white', fontSize: '0.9rem', lineHeight: 1.7, resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
+                              <button onClick={() => setEditing(false)} className="btn-secondary" style={{ padding: '0.5rem 1rem', borderRadius: 10, fontSize: '0.875rem' }}>Cancel</button>
+                              <button onClick={handleSaveEdit} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: 10, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                <Save size={13} /> Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-line', margin: 0 }}>
+                            {momData.executiveSummary}
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Key Points */}
+              <div className="glass" style={{ borderRadius: 16, overflow: 'hidden' }}>
+                <button onClick={() => toggle('keyPoints')} style={{ width: '100%', padding: '1.125rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', fontWeight: 700, fontSize: '0.9375rem' }}>
+                    <Sparkles size={16} color="#fbbf24" /> Key Points
+                    <span style={{ fontSize: '0.75rem', background: 'rgba(251,191,36,0.12)', color: '#fbbf24', borderRadius: 999, padding: '0.1rem 0.5rem' }}>{momData.keyPoints.length}</span>
+                  </div>
+                  {expandedSections.keyPoints ? <ChevronUp size={16} color="var(--color-text-muted)" /> : <ChevronDown size={16} color="var(--color-text-muted)" />}
+                </button>
+                <AnimatePresence>
+                  {expandedSections.keyPoints && (
+                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
+                      <div style={{ padding: '0 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {momData.keyPoints.map((kp, i) => (
+                          <div key={i} style={{ display: 'flex', gap: '0.875rem', padding: '0.875rem', background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: '1px solid var(--color-border)' }}>
+                            <div style={{ background: 'rgba(108,99,255,0.15)', border: '1px solid rgba(108,99,255,0.3)', borderRadius: 8, padding: '0.25rem 0.5rem', fontSize: '0.7rem', color: 'var(--color-accent-light)', fontFamily: 'monospace', fontWeight: 700, flexShrink: 0, height: 'fit-content', marginTop: 2 }}>
+                              {kp.timestamp}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.25rem' }}>{kp.topic}</div>
+                              <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>{kp.detail}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Decisions */}
+              <div className="glass" style={{ borderRadius: 16, overflow: 'hidden' }}>
+                <button onClick={() => toggle('decisions')} style={{ width: '100%', padding: '1.125rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', fontWeight: 700, fontSize: '0.9375rem' }}>
+                    <CheckCircle2 size={16} color="#4ade80" /> Decisions Made
+                    <span style={{ fontSize: '0.75rem', background: 'rgba(52,211,153,0.12)', color: '#34d399', borderRadius: 999, padding: '0.1rem 0.5rem' }}>{momData.decisions.length}</span>
+                  </div>
+                  {expandedSections.decisions ? <ChevronUp size={16} color="var(--color-text-muted)" /> : <ChevronDown size={16} color="var(--color-text-muted)" />}
+                </button>
+                <AnimatePresence>
+                  {expandedSections.decisions && (
+                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
+                      <div style={{ padding: '0 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                        {momData.decisions.map((d, i) => (
+                          <div key={i} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.75rem', background: 'rgba(52,211,153,0.05)', border: '1px solid rgba(52,211,153,0.15)', borderRadius: 10 }}>
+                            <CheckCircle2 size={15} color="#34d399" style={{ flexShrink: 0, marginTop: 1 }} />
+                            <span style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>{d}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Action Items / Tasks */}
+              <div className="glass" style={{ borderRadius: 16, overflow: 'hidden' }}>
+                <button onClick={() => toggle('tasks')} style={{ width: '100%', padding: '1.125rem 1.5rem', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'white' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', fontWeight: 700, fontSize: '0.9375rem' }}>
+                    <CheckSquare size={16} color="#f472b6" /> Action Items
+                    <span style={{ fontSize: '0.75rem', background: 'rgba(244,114,182,0.12)', color: '#f472b6', borderRadius: 999, padding: '0.1rem 0.5rem' }}>{momData.actionItems.length}</span>
+                  </div>
+                  {expandedSections.tasks ? <ChevronUp size={16} color="var(--color-text-muted)" /> : <ChevronDown size={16} color="var(--color-text-muted)" />}
+                </button>
+                <AnimatePresence>
+                  {expandedSections.tasks && (
+                    <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} style={{ overflow: 'hidden' }}>
+                      <div style={{ padding: '0 1.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {momData.actionItems.map((item, i) => (
+                          <div key={i} style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: `1px solid ${PRIORITY_COLOR[item.priority]}30` }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                              <span style={{ fontWeight: 700, fontSize: '0.875rem', flex: 1, paddingRight: '0.75rem' }}>{item.task}</span>
+                              <span style={{ background: `${PRIORITY_COLOR[item.priority]}18`, color: PRIORITY_COLOR[item.priority], border: `1px solid ${PRIORITY_COLOR[item.priority]}40`, borderRadius: 6, padding: '0.15rem 0.55rem', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>
+                                {item.priority}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Users size={11} /> {item.assignee}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Calendar size={11} /> {item.dueDate}</span>
+                            </div>
+                          </div>
+                        ))}
+                        {approved && (
+                          <div style={{ textAlign: 'center', fontSize: '0.8125rem', color: '#4ade80', paddingTop: '0.375rem' }}>
+                            ✅ All action items saved to <Link href="/tasks" style={{ color: '#4ade80' }}>Tasks</Link>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {/* RIGHT: Sidebar */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'sticky', top: '1.5rem' }}>
+
+              {/* Sentiment */}
+              <div className="glass" style={{ borderRadius: 14, padding: '1.125rem' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Meeting Tone</div>
+                <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-accent-light)' }}>{momData.sentiment}</div>
+              </div>
+
+              {/* Visibility */}
+              <div className="glass" style={{ borderRadius: 14, padding: '1.125rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                  <Eye size={14} /> Visibility
                 </div>
-              ) : (
-                <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-line' }}>{summary}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Actions */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Visibility — FR-39 */}
-            <div className="glass" style={{ borderRadius: 14, padding: '1.25rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                <Eye size={15} /> Visibility
+                {([['all', 'Everyone', '👥'], ['absentees', 'Absentees Only', '🙋']] as const).map(([val, label, emoji]) => (
+                  <button key={val} onClick={() => setVisibility(val)} disabled={approved}
+                    style={{ width: '100%', padding: '0.575rem 0.875rem', borderRadius: 9, border: `1px solid ${visibility === val ? 'var(--color-accent)' : 'var(--color-border)'}`, background: visibility === val ? 'rgba(108,99,255,0.12)' : 'transparent', color: visibility === val ? 'var(--color-accent-light)' : 'var(--color-text-secondary)', cursor: approved ? 'default' : 'pointer', fontSize: '0.8125rem', fontWeight: 600, textAlign: 'left', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'all 0.2s' }}>
+                    {emoji} {label}
+                  </button>
+                ))}
               </div>
-              {([['all', 'Everyone', '👥'], ['absentees', 'Absentees Only', '🙋']] as const).map(([val, label, emoji]) => (
-                <button key={val} onClick={() => setVisibility(val)} disabled={approved}
-                  style={{ width: '100%', padding: '0.625rem 0.875rem', borderRadius: 10, border: `1px solid ${visibility === val ? 'var(--color-accent)' : 'var(--color-border)'}`, background: visibility === val ? 'rgba(108,99,255,0.12)' : 'transparent', color: visibility === val ? 'var(--color-accent-light)' : 'var(--color-text-secondary)', cursor: approved ? 'not-allowed' : 'pointer', fontSize: '0.8125rem', fontWeight: 600, textAlign: 'left', transition: 'all 0.2s', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {emoji} {label}
-                </button>
-              ))}
-            </div>
 
-            {/* Actions */}
-            {!approved && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <button id="approve-summary-btn" onClick={handleApprove} className="btn-teal" style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                  <CheckCircle2 size={16} /> Approve & Publish
+              {/* Actions */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                {!approved && (
+                  <>
+                    <button id="approve-summary-btn" onClick={handleApprove} className="btn-teal"
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 700 }}>
+                      <CheckCircle2 size={16} /> Approve & Publish
+                    </button>
+                    <button onClick={() => generateMoM(meetingTranscript)} disabled={loadingAI}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border)', cursor: loadingAI ? 'wait' : 'pointer', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: '0.875rem' }}>
+                      <motion.div animate={loadingAI ? { rotate: 360 } : { rotate: 0 }} transition={{ duration: 1, repeat: loadingAI ? Infinity : 0, ease: 'linear' }}>
+                        <RefreshCw size={14} />
+                      </motion.div>
+                      {loadingAI ? 'Regenerating...' : 'Regenerate'}
+                    </button>
+                  </>
+                )}
+
+                {/* Version History */}
+                <button onClick={() => setShowHistory(h => !h)}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: showHistory ? 'rgba(108,99,255,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${showHistory ? 'var(--color-accent)' : 'var(--color-border)'}`, cursor: 'pointer', color: showHistory ? 'var(--color-accent-light)' : 'var(--color-text-muted)', fontWeight: 600, fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                  <History size={14} /> Version History
                 </button>
-                <button onClick={handleRegenerate} disabled={regenerating}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border)', cursor: regenerating ? 'wait' : 'pointer', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: '0.875rem', transition: 'all 0.2s' }}>
-                  <motion.div animate={regenerating ? { rotate: 360 } : { rotate: 0 }} transition={{ duration: 1, repeat: regenerating ? Infinity : 0, ease: 'linear' }}>
-                    <RefreshCw size={15} />
-                  </motion.div>
-                  {regenerating ? 'Regenerating...' : 'Regenerate'}
+
+                <AnimatePresence>
+                  {showHistory && originalDraft && (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)', borderRadius: 12, padding: '0.875rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.55 }}>
+                      <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: 'var(--color-text-secondary)' }}>📜 Original AI Draft</div>
+                      <p style={{ margin: 0, fontStyle: 'italic' }}>{originalDraft.slice(0, 180)}…</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Copy MoM */}
+                <button onClick={handleCopyMoM}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)', cursor: 'pointer', color: copied ? '#4ade80' : 'var(--color-text-muted)', fontWeight: 600, fontSize: '0.875rem', transition: 'color 0.2s' }}>
+                  <Copy size={14} /> {copied ? 'Copied!' : 'Copy MoM Text'}
                 </button>
+
+                {/* Export */}
+                <button
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)', cursor: 'pointer', color: 'var(--color-text-muted)', fontWeight: 600, fontSize: '0.875rem' }}>
+                  <Download size={14} /> Export as PDF
+                </button>
+
+                <Link href="/dashboard" style={{ textDecoration: 'none' }}>
+                  <button style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)', cursor: 'pointer', color: 'var(--color-text-muted)', fontWeight: 600, fontSize: '0.875rem' }}>
+                    <ArrowLeft size={14} /> Back to Dashboard
+                  </button>
+                </Link>
               </div>
-            )}
-
-            {/* Export — FR-43 */}
-            <button style={{ width: '100%', padding: '0.75rem', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)', cursor: 'pointer', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: '0.875rem' }}>
-              <Download size={15} /> Export as PDF
-            </button>
-          </div>
-        </div>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );
