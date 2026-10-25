@@ -1,26 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { ArrowLeft, User, Globe, Moon, Sun, Shield, Bell, LogOut, Camera, Save } from 'lucide-react';
+import { useAuth } from '@/lib/useAuth';
+import { getInitials, setLocalUser } from '@/lib/auth';
 
 const languages = ['English', 'Hindi', 'French', 'Tamil', 'Telugu', 'Kannada', 'Marathi', 'Bengali'];
 const timezones = ['Asia/Kolkata (IST)', 'America/New_York (EST)', 'Europe/London (GMT)', 'Asia/Singapore (SGT)'];
 
 export default function SettingsPage() {
+  const { user, signOut } = useAuth();
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [language, setLanguage] = useState('English');
+  const [language, setLanguage] = useState(user?.language || 'English');
   const [timezone, setTimezone] = useState('Asia/Kolkata (IST)');
   const [notifications, setNotifications] = useState({ reminders: true, tasks: true, summaries: true, doNotDisturb: false });
-  const [displayName, setDisplayName] = useState('Tejaswini Kadam');
+  const [displayName, setDisplayName] = useState(user?.name || '');
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'privacy' | 'notifications'>('profile');
   const [saved, setSaved] = useState(false);
   const [e2e, setE2e] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState(true);
   const [domainRestrict, setDomainRestrict] = useState(true);
 
+  useEffect(() => {
+    if (user?.name) setDisplayName(user.name);
+    if (user?.language) setLanguage(user.language);
+  }, [user]);
+
   const handleSave = () => {
+    if (user) {
+      setLocalUser({ ...user, name: displayName, language });
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -66,7 +77,7 @@ export default function SettingsPage() {
             })}
             <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
               <button className="nav-item" style={{ width: '100%', color: 'var(--color-danger)' }}
-                onClick={() => window.location.href = '/'}>
+                onClick={signOut}>
                 <LogOut size={16} />
                 <span>Sign Out</span>
               </button>
@@ -82,15 +93,15 @@ export default function SettingsPage() {
                 {/* Avatar */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
                   <div style={{ position: 'relative' }}>
-                    <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', fontWeight: 700 }}>T</div>
+                    <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', fontWeight: 700 }}>{getInitials(user?.name || 'U')}</div>
                     <button style={{ position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: '50%', background: 'var(--color-accent)', border: '2px solid var(--color-bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                       <Camera size={11} color="white" />
                     </button>
                   </div>
                   <div>
-                    <div style={{ fontWeight: 700 }}>Tejaswini Kadam</div>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>tejaswini@college.edu</div>
-                    <span className="badge badge-accent" style={{ marginTop: '0.375rem', fontSize: '0.75rem' }}>Above 18</span>
+                    <div style={{ fontWeight: 700 }}>{user?.name || 'Guest'}</div>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{user?.email || ''}</div>
+                    <span className="badge badge-accent" style={{ marginTop: '0.375rem', fontSize: '0.75rem' }}>{user?.ageRange === 'below18' ? 'Under 18' : 'Above 18'}</span>
                   </div>
                 </div>
 
@@ -101,7 +112,7 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: '0.375rem' }}>Email</label>
-                    <input id="email-field" className="input-glass" value="tejaswini@college.edu" disabled style={{ opacity: 0.5 }} />
+                    <input id="email-field" className="input-glass" value={user?.email || ''} disabled style={{ opacity: 0.5 }} />
                   </div>
                 </div>
               </motion.div>

@@ -8,8 +8,8 @@ import { Sparkles, Calendar, MessageSquare, Folder, BarChart3, Settings } from '
 export default function GlassNavbar() {
   const pathname = usePathname();
 
-  // Hide navbar on landing page (page.tsx) and live video calls if preferred
-  if (pathname === '/' || pathname.startsWith('/meeting/')) {
+  // Hide navbar on landing page, auth pages, and live video calls
+  if (pathname === '/' || pathname.startsWith('/auth/') || pathname.startsWith('/meeting/')) {
     return null;
   }
 

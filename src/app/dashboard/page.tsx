@@ -6,12 +6,15 @@ import Link from 'next/link';
 import {
   Video, Plus, Users, Calendar, Brain, MessageSquare,
   Bell, Settings, Archive, CreditCard, Info, ChevronRight,
-  Clock, Mic, MicOff, VideoOff, MoreHorizontal, X, CheckSquare
+  Clock, Mic, MicOff, VideoOff, MoreHorizontal, X, CheckSquare, LogOut
 } from 'lucide-react';
 import { format, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isFuture } from 'date-fns';
+import { useAuth } from '@/lib/useAuth';
+import { getInitials } from '@/lib/auth';
+import { askMeetingQA } from '@/lib/aiService';
+import NewtonsCradleLoader from '@/components/NewtonsCradleLoader';
 
-// ── Demo Data ──────────────────────────────────────────────────────────────
-const demoUser = { name: 'Tejaswini Kadam', email: 'tejaswini@college.edu', avatar: 'T', role: 'host' };
+// ── Demo Meeting Data ──────────────────────────────────────────────────────
 
 const demoMeetings = [
   { id: '1', title: 'DSA Lecture — Graphs', roomCode: 'DSA-001', date: addDays(new Date(), 1), time: '10:00 AM', duration: '1h 30m', participants: 45, isHost: true, status: 'upcoming' },
@@ -119,30 +122,53 @@ const MiniCalendar = ({ meetings }: { meetings: typeof demoMeetings }) => {
   );
 };
 
-// AI Chat Box (FR-6)
+// AI Chat Box (FR-6) — Powered by Python FastAPI AI Agent
 const AIChatBox = () => {
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([
-    { role: 'ai', text: 'Hi! Ask me anything about your past meetings.' }
+    { role: 'ai', text: 'Hi! Ask me anything about your past meetings (powered by Python AI Agent).' }
   ]);
 
-  const send = () => {
-    if (!query.trim()) return;
-    setMessages(m => [...m, { role: 'user', text: query }, { role: 'ai', text: `Searching your meetings for "${query}"... In the DSA Lecture on ${format(addDays(new Date(), -3), 'MMM dd')}, Prof. Sharma discussed graph traversal at 42:15. [Jump to timestamp →]` }]);
+  const send = async () => {
+    if (!query.trim() || loading) return;
+    const userQuery = query.trim();
     setQuery('');
+    setMessages(m => [...m, { role: 'user', text: userQuery }]);
+    setLoading(true);
+
+    try {
+      const res = await askMeetingQA(userQuery, 'DSA Lecture');
+      const timeTag = res.timestamp ? ` [Jump to ${res.timestamp} →]` : '';
+      setMessages(m => [
+        ...m,
+        { role: 'ai', text: `${res.answer}${timeTag}` }
+      ]);
+    } catch {
+      setMessages(m => [
+        ...m,
+        { role: 'ai', text: 'Sorry, I encountered an issue retrieving that from the meeting archive.' }
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="glass" style={{ borderRadius: 16, padding: '1.25rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '1rem' }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(108,99,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Brain size={16} color="var(--color-accent-light)" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(108,99,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Brain size={16} color="var(--color-accent-light)" />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>AI Assistant</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>FastAPI + LangChain Agent</div>
+          </div>
         </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>AI Assistant</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Ask about any past meeting</div>
-        </div>
+        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: 6, background: 'rgba(34,197,94,0.12)', color: '#4ade80', fontWeight: 600 }}>
+          Python Online
+        </span>
       </div>
 
       <div style={{ maxHeight: 160, overflowY: 'auto', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -157,20 +183,28 @@ const AIChatBox = () => {
             </div>
           </div>
         ))}
+        {loading && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div style={{ padding: '0.5rem 0.875rem', borderRadius: '12px 12px 12px 2px', background: 'rgba(255,255,255,0.06)', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+              Python Agent is thinking...
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <input
           id="ai-chat-input"
           className="input-glass"
-          placeholder="What was discussed about graphs?"
+          placeholder="Ask e.g. What was discussed about graphs?"
           value={query}
+          disabled={loading}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send()}
           style={{ borderRadius: 10, fontSize: '0.8125rem' }}
         />
-        <button onClick={send} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: 10, whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>
-          Ask
+        <button onClick={send} disabled={loading} className="btn-primary" style={{ padding: '0.5rem 1rem', borderRadius: 10, whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>
+          {loading ? '...' : 'Ask'}
         </button>
       </div>
     </div>
@@ -178,15 +212,29 @@ const AIChatBox = () => {
 };
 
 export default function DashboardPage() {
+  const { user, loading, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
+  // All hooks MUST be called before any early return (Rules of Hooks)
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
     if (hour < 17) return 'Good afternoon';
     return 'Good evening';
   }, []);
+
+  // Show loader while checking session
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg-primary)' }}>
+        <NewtonsCradleLoader size={54} speed={1.2} color="#a78bfa" label="Loading your dashboard..." />
+      </div>
+    );
+  }
+
+  const currentUser = user ?? { name: 'Guest', email: 'guest@meetflow.app', role: 'student', language: 'English', isLoggedIn: false };
+  const displayInitials = getInitials(currentUser.name);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg-primary)' }}>
@@ -235,10 +283,14 @@ export default function DashboardPage() {
             </AnimatePresence>
           </div>
 
+          {/* Sign Out */}
+          <button onClick={signOut} title="Sign out" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)', borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <LogOut size={16} color="var(--color-text-secondary)" />
+          </button>
           {/* Avatar */}
           <Link href="/settings">
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--gradient-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer' }}>
-              {demoUser.avatar}
+              {displayInitials}
             </div>
           </Link>
         </div>
@@ -249,7 +301,7 @@ export default function DashboardPage() {
         {/* Welcome */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: '2rem' }}>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>
-            {greeting}, <span className="gradient-text">{demoUser.name.split(' ')[0]}</span> 👋
+            {greeting}, <span className="gradient-text">{currentUser.name.split(' ')[0]}</span> 👋
           </h1>
           <p style={{ color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>You have {demoMeetings.length} upcoming meetings</p>
         </motion.div>
