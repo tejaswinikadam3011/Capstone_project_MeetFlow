@@ -193,13 +193,36 @@ Sentiment: ${momData.sentiment}`;
 
         {/* Error state */}
         {!loadingAI && error && (
-          <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 14, padding: '1.5rem', textAlign: 'center', marginBottom: '1.5rem' }}>
-            <AlertCircle size={28} color="#f87171" style={{ margin: '0 auto 0.75rem' }} />
-            <div style={{ fontWeight: 700, color: '#f87171', marginBottom: '0.375rem' }}>AI Generation Failed</div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>{error}</div>
-            <button onClick={() => generateMoM(meetingTranscript)} className="btn-primary" style={{ padding: '0.6rem 1.25rem', borderRadius: 10 }}>
-              Try Again
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 14, padding: '1.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+                <AlertCircle size={22} color="#f87171" style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <div style={{ fontWeight: 700, color: '#f87171', marginBottom: '0.375rem' }}>AI Generation Failed</div>
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', whiteSpace: 'pre-line', lineHeight: 1.6 }}>{error}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button onClick={() => generateMoM(meetingTranscript)} className="btn-primary" style={{ padding: '0.6rem 1.25rem', borderRadius: 10, fontSize: '0.875rem' }}>
+                  Retry
+                </button>
+                <button onClick={() => {
+                  // Let user write manually
+                  setMomData({
+                    executiveSummary: '',
+                    keyPoints: [],
+                    decisions: [],
+                    actionItems: [],
+                    sentiment: 'To be filled manually',
+                  });
+                  setEditing(true);
+                  setEditText('');
+                  setError(null);
+                }} style={{ padding: '0.6rem 1.25rem', borderRadius: 10, fontSize: '0.875rem', background: 'rgba(255,255,255,0.07)', border: '1px solid var(--color-border)', color: 'white', cursor: 'pointer', fontWeight: 600 }}>
+                  Write MoM Manually
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
