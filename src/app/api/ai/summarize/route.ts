@@ -48,7 +48,7 @@ Based ONLY on what is in the notes above, generate a structured Minutes of Meeti
 IMPORTANT: Only use information from the provided notes. Do not invent topics not mentioned. Return raw JSON only, no markdown fences.`;
 
     // Try models in order of preference
-    const models = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'mixtral-8x7b-32768'];
+    const models = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'];
     let lastError: any = null;
 
     for (const model of models) {
