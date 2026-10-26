@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import Groq from 'groq-sdk';
 
 export async function POST(req: Request) {
   try {
     const { transcript, meetingTitle } = await req.json();
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
 
     if (!transcript || transcript.trim().length === 0) {
       return NextResponse.json(
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         source: 'fallback',
-        message: 'No GEMINI_API_KEY detected. Providing demo extracted tasks. Add GEMINI_API_KEY for live extraction.',
+        message: 'No GROQ_API_KEY detected. Providing demo extracted tasks. Add GROQ_API_KEY for live extraction.',
         data: {
           tasks: [
             { id: '1', title: 'Prepare LiveKit token generation API', assignee: 'Alex Morgan', priority: 'High', dueDate: 'Tomorrow, 5:00 PM', status: 'pending' },
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const groq = new Groq({ apiKey });
 
     const prompt = `You are "MeetFlow AI Task Agent", an intelligent action item detector for meetings.
 Analyze the following transcript from "${meetingTitle || 'Meeting'}" and extract all clear action items, assignments, and follow-ups.
@@ -53,20 +53,19 @@ Return a raw JSON response (no markdown enclosing) with this exact schema:
   ]
 }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
     });
 
-    const responseText = response.text || '{"tasks":[]}';
+    const responseText = response.choices[0]?.message?.content || '{"tasks":[]}';
     const parsedData = JSON.parse(responseText);
 
     return NextResponse.json({
       success: true,
-      source: 'gemini-2.5-flash',
+      source: 'llama-3.3-70b-versatile',
       data: parsedData,
     });
   } catch (error: any) {

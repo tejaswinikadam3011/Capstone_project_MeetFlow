@@ -174,7 +174,7 @@ Sentiment: ${momData.sentiment}`;
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Clock size={12} /> {meetingDuration}</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Users size={12} /> Room: {meetingId}</span>
               {aiSource && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Sparkles size={12} /> {aiSource === 'fallback' ? 'Demo AI' : 'Gemini 2.5 Flash'}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Sparkles size={12} /> {aiSource === 'fallback' ? 'Demo AI' : 'Groq LLaMA'}</span>
               )}
             </div>
           </div>
@@ -186,7 +186,7 @@ Sentiment: ${momData.sentiment}`;
             <NewtonsCradleLoader size={54} speed={1.2} color="#a78bfa" label="" />
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: '0.375rem' }}>Generating Minutes of Meeting…</div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Gemini AI is analyzing the meeting and extracting key insights, decisions & action items</div>
+              <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Groq AI is analyzing the meeting and extracting key insights, decisions & action items</div>
             </div>
           </div>
         )}

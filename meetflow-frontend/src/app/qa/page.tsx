@@ -73,7 +73,7 @@ export default function QAPage() {
           text: json.data.answer,
           meeting: selectedMeetingObj?.title || (firstCitation ? `Meeting Session (${firstCitation.speaker || 'Instructor'})` : undefined),
           timestamp: firstCitation?.timestamp || '18:40',
-          confidence: json.source === 'gemini-2.5-flash' ? 'high' : 'medium',
+          confidence: json.source === 'llama-3.3-70b-versatile' ? 'high' : 'medium',
           escalated: json.data.answer.toLowerCase().includes('escalat') || json.data.answer.toLowerCase().includes('not find'),
         };
         setMessages(m => [...m, aiResponse]);
@@ -213,7 +213,7 @@ export default function QAPage() {
             <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Brain size={15} color="#c4b5fd" />
             </div>
-            <NewtonsCradleLoader size={36} speed={1.2} color="#c4b5fd" label="Gemini is searching meeting transcripts..." />
+            <NewtonsCradleLoader size={36} speed={1.2} color="#c4b5fd" label="Groq AI is searching meeting transcripts..." />
           </div>
         )}
       </div>

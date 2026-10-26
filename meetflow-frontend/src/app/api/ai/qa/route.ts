@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import Groq from 'groq-sdk';
 
 export async function POST(req: Request) {
   try {
     const { question, meetingContext, meetingTitle, chatHistory } = await req.json();
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
 
     if (!question || question.trim().length === 0) {
       return NextResponse.json(
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         source: 'fallback',
-        message: 'No GEMINI_API_KEY set. Providing mock response. Add GEMINI_API_KEY in .env.local for live Gemini responses.',
+        message: 'No GROQ_API_KEY set. Providing mock response. Add GROQ_API_KEY in .env.local for live AI responses.',
         data: {
           answer: `Regarding "${question}": During the session, the team emphasized completing the core deliverables by Friday. Dr. Priya confirmed that the architectural review passed and highlighted that all students must review the summary before next Monday.`,
           citations: [
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const groq = new Groq({ apiKey });
 
     const prompt = `You are "MeetFlow AI Q&A Assistant", an intelligent meeting assistant for university students and professors.
 A student or attendee is asking a question about a past meeting titled "${meetingTitle || 'Meeting'}".
@@ -54,20 +54,19 @@ Respond with raw JSON only (no markdown enclosing):
   "relatedTopics": ["Related Topic 1", "Related Topic 2"]
 }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
     });
 
-    const responseText = response.text || '{}';
+    const responseText = response.choices[0]?.message?.content || '{}';
     const parsedData = JSON.parse(responseText);
 
     return NextResponse.json({
       success: true,
-      source: 'gemini-2.5-flash',
+      source: 'llama-3.3-70b-versatile',
       data: parsedData,
     });
   } catch (error: any) {

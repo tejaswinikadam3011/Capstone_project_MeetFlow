@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import Groq from 'groq-sdk';
 
 export async function POST(req: Request) {
   try {
     const { transcript, title } = await req.json();
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
 
     if (!transcript || transcript.trim().length === 0) {
       return NextResponse.json({ error: 'Transcript is required' }, { status: 400 });
@@ -16,11 +16,11 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: false,
         source: 'no-key',
-        error: 'GEMINI_API_KEY not set. Please add it to your environment variables.',
+        error: 'GROQ_API_KEY not set. Please add it to your environment variables.',
       }, { status: 500 });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const groq = new Groq({ apiKey });
 
     const prompt = `You are an expert AI Meeting Assistant for "MeetFlow".
 Analyze the following meeting information for the meeting titled "${title || 'Team Meeting'}":
@@ -45,23 +45,22 @@ Based ONLY on what is in the notes above, generate a structured Minutes of Meeti
   "sentiment": "Short phrase describing the meeting tone based on content"
 }
 
-IMPORTANT: Only use information from the provided notes. Do not invent topics not mentioned.`;
-
-    let lastError: any = null;
+IMPORTANT: Only use information from the provided notes. Do not invent topics not mentioned. Return raw JSON only, no markdown fences.`;
 
     // Try models in order of preference
-    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const models = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'mixtral-8x7b-32768'];
+    let lastError: any = null;
 
     for (const model of models) {
       try {
-        const response = await ai.models.generateContent({
+        const response = await groq.chat.completions.create({
           model,
-          contents: prompt,
-          config: { responseMimeType: 'application/json' },
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.3,
         });
 
-        const responseText = response.text || '{}';
-        // Strip markdown code fences if present
+        const responseText = response.choices[0]?.message?.content || '{}';
         const clean = responseText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
         const parsedData = JSON.parse(clean);
 
@@ -78,7 +77,7 @@ IMPORTANT: Only use information from the provided notes. Do not invent topics no
     }
 
     // All models failed
-    throw lastError || new Error('All Gemini models failed');
+    throw lastError || new Error('All Groq models failed');
 
   } catch (error: any) {
     console.error('AI Summarization Error:', error?.message || error);
@@ -86,7 +85,7 @@ IMPORTANT: Only use information from the provided notes. Do not invent topics no
       {
         success: false,
         error: error?.message || 'Failed to generate AI summary',
-        hint: 'Ensure GEMINI_API_KEY is a valid key from aistudio.google.com (starts with AIza...)',
+        hint: 'Ensure GROQ_API_KEY is a valid key from console.groq.com',
       },
       { status: 500 }
     );

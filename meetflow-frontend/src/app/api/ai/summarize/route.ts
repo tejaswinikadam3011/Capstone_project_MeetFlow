@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import Groq from 'groq-sdk';
 
 export async function POST(req: Request) {
   try {
     const { transcript, title, meetingId } = await req.json();
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
 
     if (!transcript || transcript.trim().length === 0) {
       return NextResponse.json(
@@ -19,12 +19,12 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         source: 'fallback',
-        message: 'No GEMINI_API_KEY detected in .env.local. Providing demo AI summary. Add GEMINI_API_KEY for live generation.',
+        message: 'No GROQ_API_KEY detected in .env.local. Providing demo AI summary. Add GROQ_API_KEY for live generation.',
         data: {
           executiveSummary: `The session focused on ${title || 'project architecture and delivery milestones'}. Key technical priorities, module assignments, and next deployment deadlines were finalized across the core engineering team.`,
           keyPoints: [
             { topic: 'Architecture Finalization', detail: 'Consensus reached on microservice boundaries and real-time WebRTC channels.', timestamp: '04:15' },
-            { topic: 'AI Agent Pipeline', detail: 'Agreed on Gemini 2.5 integration for autonomous transcript summaries and Q&A indexing.', timestamp: '18:30' },
+            { topic: 'AI Agent Pipeline', detail: 'Agreed on Groq LLaMA integration for autonomous transcript summaries and Q&A indexing.', timestamp: '18:30' },
             { topic: 'Student Catch-up Flow', detail: 'Approved highlight reels and timestamped question assistance for absent participants.', timestamp: '31:40' },
           ],
           decisions: [
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const groq = new Groq({ apiKey });
 
     const prompt = `You are an expert AI Executive Meeting Assistant for "MeetFlow", an intelligent college and enterprise collaboration platform.
 Analyze the following meeting transcript/notes for the meeting titled "${title || 'Class / Team Meeting'}":
@@ -68,26 +68,45 @@ Provide a structured, accurate JSON response with the following keys ONLY (no ma
   "sentiment": "Overall meeting tone (e.g. Highly Productive, Strategic, Technical Alignment, etc.)"
 }`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
+    // Try models in order of preference
+    const models = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'mixtral-8x7b-32768'];
+    let lastError: any = null;
 
-    const responseText = response.text || '{}';
-    const parsedData = JSON.parse(responseText);
+    for (const model of models) {
+      try {
+        const response = await groq.chat.completions.create({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.3,
+        });
 
-    return NextResponse.json({
-      success: true,
-      source: 'gemini-2.5-flash',
-      data: parsedData,
-    });
+        const responseText = response.choices[0]?.message?.content || '{}';
+        const clean = responseText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+        const parsedData = JSON.parse(clean);
+
+        return NextResponse.json({
+          success: true,
+          source: model,
+          data: parsedData,
+        });
+      } catch (modelErr: any) {
+        console.error(`Model ${model} failed:`, modelErr?.message);
+        lastError = modelErr;
+        continue;
+      }
+    }
+
+    throw lastError || new Error('All Groq models failed');
+
   } catch (error: any) {
-    console.error('AI Summarization Error:', error);
+    console.error('AI Summarization Error:', error?.message || error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to generate AI summary' },
+      {
+        success: false,
+        error: error?.message || 'Failed to generate AI summary',
+        hint: 'Ensure GROQ_API_KEY is a valid key from console.groq.com',
+      },
       { status: 500 }
     );
   }
