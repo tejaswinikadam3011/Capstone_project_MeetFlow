@@ -3,75 +3,111 @@ import Groq from 'groq-sdk';
 
 export async function POST(req: Request) {
   try {
-    const { question, meetingContext, meetingTitle, chatHistory } = await req.json();
+    const { question, meetingContext, meetingTitle, chatHistory = [] } = await req.json();
 
     const apiKey = process.env.GROQ_API_KEY;
 
     if (!question || question.trim().length === 0) {
-      return NextResponse.json(
-        { error: 'Question query is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Question is required' }, { status: 400 });
     }
 
     if (!apiKey) {
-      // Fallback demo response if API key is not yet set
       return NextResponse.json({
         success: true,
         source: 'fallback',
-        message: 'No GROQ_API_KEY set. Providing mock response. Add GROQ_API_KEY in .env.local for live AI responses.',
         data: {
-          answer: `Regarding "${question}": During the session, the team emphasized completing the core deliverables by Friday. Dr. Priya confirmed that the architectural review passed and highlighted that all students must review the summary before next Monday.`,
-          citations: [
-            { timestamp: '14:20', speaker: 'Dr. Priya Sharma', note: 'Discussion on delivery scope' },
-            { timestamp: '28:45', speaker: 'Rahul Verma', note: 'Confirmation on testing criteria' }
-          ],
-          relatedTopics: ['Architecture Review', 'LiveKit WebRTC Setup', 'Action Item Tracking']
-        }
+          answer: `I'm running in demo mode (no API key set). For the question: "${question}" — in a real session, I would search through your meeting transcripts and provide a detailed answer with timestamps and citations.`,
+          citations: [],
+          relatedTopics: ['Add GROQ_API_KEY to .env.local for live responses'],
+        },
       });
     }
 
     const groq = new Groq({ apiKey });
 
-    const prompt = `You are "MeetFlow AI Q&A Assistant", an intelligent meeting assistant for university students and professors.
-A student or attendee is asking a question about a past meeting titled "${meetingTitle || 'Meeting'}".
+    // Build conversation messages with full history
+    const systemPrompt = `You are MeetFlow AI — an expert meeting assistant for students and professionals.
+Your job is to answer questions about meetings using the provided transcript/context.
 
-MEETING CONTEXT / TRANSCRIPT:
-"""
-${meetingContext || 'General meeting discussions regarding course milestones, architecture design, deadlines, and task assignments.'}
-"""
+RULES:
+- Answer ONLY from the meeting context provided. If context is empty, say so honestly.
+- Be concise, helpful, and direct.
+- If you find relevant info, cite the timestamp and speaker.
+- If asked something not in the meeting, say "This wasn't covered in the meeting" and suggest escalating to the host.
+- Always respond with valid raw JSON only — no markdown, no code fences.
 
-USER QUESTION:
-"${question}"
-
-Provide a direct, helpful, and polite answer. Include specific timestamp references/citations whenever relevant.
-Respond with raw JSON only (no markdown enclosing):
+RESPONSE FORMAT (strict JSON):
 {
-  "answer": "Detailed answer explaining the topic clearly and citing participants if mentioned",
+  "answer": "Your detailed answer here",
   "citations": [
-    { "timestamp": "MM:SS", "speaker": "Speaker name if identifiable", "note": "What was said" }
+    { "timestamp": "MM:SS", "speaker": "Speaker name or 'Unknown'", "note": "What was said" }
   ],
-  "relatedTopics": ["Related Topic 1", "Related Topic 2"]
-}`;
+  "relatedTopics": ["Topic 1", "Topic 2"]
+}
 
-    const response = await groq.chat.completions.create({
-      model: 'qwen/qwen3.8-27b',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-    });
+MEETING: "${meetingTitle || 'Meeting'}"
+TRANSCRIPT/CONTEXT:
+"""
+${meetingContext || 'No transcript available for this meeting.'}
+"""`;
 
-    const responseText = response.choices[0]?.message?.content || '{}';
-    const parsedData = JSON.parse(responseText);
+    // Build message history for multi-turn conversation
+    const messages: Groq.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      // Include prior conversation turns
+      ...chatHistory.flatMap((turn: { question: string; answer: string }) => [
+        { role: 'user' as const, content: turn.question },
+        { role: 'assistant' as const, content: turn.answer },
+      ]),
+      { role: 'user', content: question },
+    ];
 
-    return NextResponse.json({
-      success: true,
-      source: 'llama-3.3-70b-versatile',
-      data: parsedData,
-    });
+    let lastError: any = null;
+    const models = ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
+
+    for (const model of models) {
+      try {
+        const response = await groq.chat.completions.create({
+          model,
+          messages,
+          temperature: 0.2,
+          max_tokens: 1024,
+        });
+
+        const raw = response.choices[0]?.message?.content || '{}';
+        // Strip any accidental markdown fences
+        const clean = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+        let parsed: any;
+        try {
+          parsed = JSON.parse(clean);
+        } catch {
+          // If JSON parse fails, treat entire response as plain answer
+          parsed = { answer: clean, citations: [], relatedTopics: [] };
+        }
+
+        return NextResponse.json({
+          success: true,
+          source: model,
+          data: {
+            answer: parsed.answer || clean,
+            citations: parsed.citations || [],
+            relatedTopics: parsed.relatedTopics || [],
+          },
+        });
+      } catch (err: any) {
+        console.error(`Model ${model} failed:`, err?.message);
+        lastError = err;
+        continue;
+      }
+    }
+
+    throw lastError || new Error('All AI models failed');
+
   } catch (error: any) {
-    console.error('AI Q&A Error:', error);
+    console.error('AI Q&A Error:', error?.message || error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to process AI question' },
+      { success: false, error: error?.message || 'Failed to process your question' },
       { status: 500 }
     );
   }
