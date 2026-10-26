@@ -69,7 +69,7 @@ Provide a structured, accurate JSON response with the following keys ONLY (no ma
 }`;
 
     // Try models in order of preference
-    const models = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'];
+    const models = ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
     let lastError: any = null;
 
     for (const model of models) {
@@ -77,7 +77,6 @@ Provide a structured, accurate JSON response with the following keys ONLY (no ma
         const response = await groq.chat.completions.create({
           model,
           messages: [{ role: 'user', content: prompt }],
-          response_format: { type: 'json_object' },
           temperature: 0.3,
         });
 
